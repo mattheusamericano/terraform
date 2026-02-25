@@ -1,0 +1,32 @@
+parameters:
+  - name: serviceConnection
+    type: string
+
+steps:
+- task: Bash@3
+  displayName: 'Login via Service Connection'
+  inputs:
+    targetType: 'inline'
+    script: |
+      # O Azure DevOps injeta o segredo na variável de ambiente GCP_JSON_DATA
+      # definida no bloco 'env' abaixo.
+      
+      if [ -z "$GCP_JSON_DATA" ]; then
+        echo "Erro: A variável da Service Connection está vazia. Verifique o nome e as permissões."
+        exit 1
+      fi
+
+      CRED_PATH="$(Agent.TempDirectory)/gcp_creds.json"
+      echo "$GCP_JSON_DATA" > "$CRED_PATH"
+      
+      echo "##vso[task.setvariable variable=GOOGLE_APPLICATION_CREDENTIALS]$CRED_PATH"
+      
+      # Opcional: Extrair o Project ID do JSON para usar no Terraform
+      PROJECT_ID=$(echo $GCP_JSON_DATA | jq -r .project_id)
+      echo "##vso[task.setvariable variable=CLOUDSDK_CORE_PROJECT]$PROJECT_ID"
+      
+      echo "Autenticação preparada com sucesso."
+  env:
+    # ESTA É A PARTE MAIS IMPORTANTE:
+    # A sintaxe $(Endpoint.Gcp.ID.ServiceAccountKey) acessa o conteúdo do JSON
+    GCP_JSON_DATA: $(Endpoint.Gcp.${{ parameters.serviceConnection }}.ServiceAccountKey)
