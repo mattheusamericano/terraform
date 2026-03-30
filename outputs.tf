@@ -1,43 +1,31 @@
-# ============================================================
-# Outputs - Cloud SQL Module
-# ============================================================
-
-output "instance_name" {
-  description = "Nome da instância Cloud SQL"
-  value       = google_sql_database_instance.main.name
+output "identity_pool_ids" {
+  description = "IDs dos workload identity pools criados"
+  value = {
+    for k, v in google_iam_workload_identity_pool.identity_pool :
+    k => v.workload_identity_pool_id
+  }
 }
 
-output "instance_connection_name" {
-  description = "Connection name para uso com Cloud SQL Auth Proxy"
-  value       = google_sql_database_instance.main.connection_name
+output "identity_pool_names" {
+  description = "Resource names completos dos pools"
+  value = {
+    for k, v in google_iam_workload_identity_pool.identity_pool :
+    k => v.name
+  }
 }
 
-output "private_ip_address" {
-  description = "IP privado da instância (use para comunicação interna na VPC)"
-  value       = google_sql_database_instance.main.private_ip_address
+output "provider_names" {
+  description = "Resource names dos providers (útil para WIF binding)"
+  value = {
+    for k, v in google_iam_workload_identity_pool_provider.identity_pool_provider :
+    k => v.name
+  }
 }
 
-output "instance_self_link" {
-  description = "Self-link da instância"
-  value       = google_sql_database_instance.main.self_link
-}
-
-output "read_replica_connection_names" {
-  description = "Connection names das read replicas"
-  value       = [for r in google_sql_database_instance.read_replica : r.connection_name]
-}
-
-output "read_replica_private_ips" {
-  description = "IPs privados das read replicas"
-  value       = [for r in google_sql_database_instance.read_replica : r.private_ip_address]
-}
-
-output "sql_proxy_service_account_email" {
-  description = "E-mail do service account do Cloud SQL Proxy"
-  value       = var.create_proxy_service_account ? google_service_account.sql_proxy_sa[0].email : null
-}
-
-output "private_ip_range_name" {
-  description = "Nome do range de IPs privados reservados para o peering"
-  value       = google_compute_global_address.private_ip_range.name
+output "sa_binding_etags" {
+  description = "ETags dos IAM bindings (útil para auditoria)"
+  value = {
+    for k, v in google_service_account_iam_binding.wipool_identity_binding :
+    k => v.etag
+  }
 }
