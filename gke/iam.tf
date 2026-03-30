@@ -107,3 +107,51 @@ resource "google_project_iam_member" "mesh_sa_service_agent" {
   role    = "roles/meshconfig.admin"
   member  = local.fleet_sa[each.key]
 }
+
+
+
+# 1 - Cria namespace e habilita injeção do sidecar
+kubectl create namespace teste
+kubectl label namespace teste istio-injection=enabled
+
+# 2 - Deploy do httpbin
+kubectl apply -n teste -f - << 'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: httpbin
+  namespace: teste
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: httpbin
+  template:
+    metadata:
+      labels:
+        app: httpbin
+    spec:
+      containers:
+      - name: httpbin
+        image: kennethreitz/httpbin
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: httpbin
+  namespace: teste
+spec:
+  selector:
+    app: httpbin
+  ports:
+  - port: 80
+    targetPort: 80
+EOF
+
+# 3 - Verifica se o sidecar foi injetado (deve ter 2 containers)
+kubectl get pods -n teste
+
+# 4 - Verifica no console do GCP
+# GKE → Service Mesh → deve aparecer o httpbin
