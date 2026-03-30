@@ -69,16 +69,12 @@ locals {
   fleet_sa = {
     for k, v in var.gke_cluster_settings : k =>
       "serviceAccount:service-${data.google_project.project[k].number}@gcp-sa-gkehub.iam.gserviceaccount.com"
-    if v.enable_service_mesh
   }
 }
 
 # Permissão no projeto do cluster
 resource "google_project_iam_member" "fleet_sa_container_admin" {
-  for_each = {
-    for k, v in var.gke_cluster_settings : k => v
-    if v.enable_service_mesh
-  }
+  for_each = var.gke_cluster_settings
 
   project = each.value.project_id
   role    = "roles/container.admin"
@@ -87,10 +83,7 @@ resource "google_project_iam_member" "fleet_sa_container_admin" {
 
 # Permissão para acessar recursos do Fleet
 resource "google_project_iam_member" "fleet_sa_gkehub_agent" {
-  for_each = {
-    for k, v in var.gke_cluster_settings : k => v
-    if v.enable_service_mesh
-  }
+  for_each = var.gke_cluster_settings
 
   project = each.value.project_id
   role    = "roles/gkehub.serviceAgent"
@@ -99,22 +92,16 @@ resource "google_project_iam_member" "fleet_sa_gkehub_agent" {
 
 # Permissão no host project da Shared VPC
 resource "google_project_iam_member" "fleet_sa_network_viewer" {
-  for_each = {
-    for k, v in var.gke_cluster_settings : k => v
-    if v.enable_service_mesh
-  }
+  for_each = var.gke_cluster_settings
 
-  project = each.value.network_project_id  # host project
+  project = each.value.network_project_id
   role    = "roles/compute.networkViewer"
   member  = local.fleet_sa[each.key]
 }
 
 # Permissão do SA do mesh no projeto do cluster
 resource "google_project_iam_member" "mesh_sa_service_agent" {
-  for_each = {
-    for k, v in var.gke_cluster_settings : k => v
-    if v.enable_service_mesh
-  }
+  for_each = var.gke_cluster_settings
 
   project = each.value.project_id
   role    = "roles/meshconfig.admin"
