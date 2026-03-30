@@ -155,3 +155,12 @@ kubectl get pods -n teste
 
 # 4 - Verifica no console do GCP
 # GKE → Service Mesh → deve aparecer o httpbin
+
+# Gera tráfego misto - sucesso e erros
+for i in $(seq 1 50); do
+  curl -s http://localhost:8080/get > /dev/null        # 200
+  curl -s http://localhost:8080/status/404 > /dev/null  # 404
+  curl -s http://localhost:8080/status/500 > /dev/null  # 500
+  sleep 0.5
+done
+```
