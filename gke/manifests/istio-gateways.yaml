@@ -1,0 +1,132 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: istio-ingress
+  labels:
+    istio-injection: enabled
+---
+# ============================================================
+# IngressGateway INTERNO - ILB (apenas VPC)
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: istio-ingressgateway-internal
+  namespace: istio-ingress
+spec:
+  selector:
+    matchLabels:
+      istio: ingressgateway-internal
+  template:
+    metadata:
+      annotations:
+        inject.istio.io/templates: gateway
+      labels:
+        istio: ingressgateway-internal
+        istio.io/rev: asm-managed-stable
+    spec:
+      nodeSelector:
+        role: system
+      tolerations:
+      - key: "CriticalAddonsOnly"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: istio-proxy
+        image: auto
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: istio-ingressgateway-internal
+  namespace: istio-ingress
+  annotations:
+    networking.gke.io/load-balancer-type: "Internal"
+spec:
+  type: LoadBalancer
+  selector:
+    istio: ingressgateway-internal
+  ports:
+  - port: 80
+    targetPort: 8080
+    name: http2
+  - port: 443
+    targetPort: 8443
+    name: https
+---
+# ============================================================
+# IngressGateway EXTERNO - LB público
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: istio-ingressgateway-external
+  namespace: istio-ingress
+spec:
+  selector:
+    matchLabels:
+      istio: ingressgateway-external
+  template:
+    metadata:
+      annotations:
+        inject.istio.io/templates: gateway
+      labels:
+        istio: ingressgateway-external
+        istio.io/rev: asm-managed-stable
+    spec:
+      nodeSelector:
+        role: system
+      tolerations:
+      - key: "CriticalAddonsOnly"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: istio-proxy
+        image: auto
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: istio-ingressgateway-external
+  namespace: istio-ingress
+spec:
+  type: LoadBalancer
+  selector:
+    istio: ingressgateway-external
+  ports:
+  - port: 80
+    targetPort: 8080
+    name: http2
+  - port: 443
+    targetPort: 8443
+    name: https
+
+
+#### PIPELINE ####
+
+- task: Bash@3
+  displayName: 'Apply Istio Gateways'
+  inputs:
+    targetType: 'inline'
+    script: |
+      gcloud container clusters get-credentials gke-tf-des \
+        --zone southamerica-east1-b \
+        --project terraform-442218
+      
+      kubectl apply -f tf-modules-for-gcp/gke/manifests/istio-gateways.yaml
+      
+      kubectl get svc -n istio-ingress
