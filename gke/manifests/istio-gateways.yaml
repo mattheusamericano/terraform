@@ -21,6 +21,7 @@ spec:
     metadata:
       annotations:
         inject.istio.io/templates: gateway
+        networking.gke.io/enable-logging: "true"
       labels:
         istio: ingressgateway-internal
         istio.io/rev: asm-managed-stable
