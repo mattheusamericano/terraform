@@ -1,0 +1,53 @@
+parameters:
+  - name: project_id
+    type: string
+
+  - name: sigla
+    type: string
+
+  - name: bucket_infra
+    type: string
+
+  - name: bucket_iam
+    type: string
+
+  - name: gcp_location
+    type: string
+    default: "us-central1"
+
+steps:
+  - script: |
+      BUCKET="gs://${{ parameters.bucket_infra }}"
+      PASTA="${BUCKET}/terraform/${{ parameters.sigla }}"
+
+      if gsutil ls -b "${BUCKET}" > /dev/null 2>&1; then
+        echo "##[warning]Bucket ${BUCKET} já existe — pulando criação."
+      else
+        gsutil mb -p "${{ parameters.project_id }}" -l "${{ parameters.gcp_location }}" -b on "${BUCKET}"
+        gsutil versioning set on "${BUCKET}"
+      fi
+
+      if gsutil ls "${PASTA}/" > /dev/null 2>&1; then
+        echo "##[warning]Pasta terraform/${{ parameters.sigla }} já existe — pulando."
+      else
+        echo "" | gsutil cp - "${PASTA}/.keep"
+      fi
+    displayName: "🏗️ Bucket INFRA — terraform/${{ parameters.sigla }}"
+
+  - script: |
+      BUCKET="gs://${{ parameters.bucket_iam }}"
+      PASTA="${BUCKET}/terraform/iam"
+
+      if gsutil ls -b "${BUCKET}" > /dev/null 2>&1; then
+        echo "##[warning]Bucket ${BUCKET} já existe — pulando criação."
+      else
+        gsutil mb -p "${{ parameters.project_id }}" -l "${{ parameters.gcp_location }}" -b on "${BUCKET}"
+        gsutil versioning set on "${BUCKET}"
+      fi
+
+      if gsutil ls "${PASTA}/" > /dev/null 2>&1; then
+        echo "##[warning]Pasta terraform/iam já existe — pulando."
+      else
+        echo "" | gsutil cp - "${PASTA}/.keep"
+      fi
+    displayName: "🔐 Bucket IAM — terraform/iam"
