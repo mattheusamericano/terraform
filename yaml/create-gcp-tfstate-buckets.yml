@@ -16,18 +16,21 @@ steps:
   - script: |
       BUCKET="gs://${{ parameters.bucket }}"
 
-      if gsutil ls -b "${BUCKET}" > /dev/null 2>&1; then
+      if gcloud storage buckets describe "${BUCKET}" > /dev/null 2>&1; then
         echo "##[warning]Bucket ${BUCKET} já existe — pulando criação."
       else
-        gsutil mb -p "${{ parameters.project_id }}" -l "${{ parameters.gcp_location }}" -b on "${BUCKET}"
-        gsutil versioning set on "${BUCKET}"
+        gcloud storage buckets create "${BUCKET}" \
+          --project="${{ parameters.project_id }}" \
+          --location="${{ parameters.gcp_location }}" \
+          --uniform-bucket-level-access
+        gcloud storage buckets update "${BUCKET}" --versioning
       fi
 
       for PASTA in "terraform/${{ parameters.sigla }}" "terraform/iam"; do
-        if gsutil ls "${BUCKET}/${PASTA}/" > /dev/null 2>&1; then
+        if gcloud storage ls "${BUCKET}/${PASTA}/" > /dev/null 2>&1; then
           echo "##[warning]Pasta ${PASTA} já existe — pulando."
         else
-          echo "" | gsutil cp - "${BUCKET}/${PASTA}/.keep"
+          echo "" | gcloud storage cp - "${BUCKET}/${PASTA}/.keep"
         fi
       done
     displayName: "🪣 Validar e criar bucket e subdiretórios"
