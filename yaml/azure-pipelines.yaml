@@ -3,6 +3,5 @@ steps:
     parameters:
       project_id: ${{ parameters.project_id }}
       sigla: ${{ parameters.sigla }}
-      bucket_infra: ${{ parameters.bucket_infra }}
-      bucket_iam: ${{ parameters.bucket_iam }}
+      bucket: ${{ parameters.bucket }}
       gcp_location: ${{ parameters.gcp_location }}
