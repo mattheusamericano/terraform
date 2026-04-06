@@ -1,0 +1,8 @@
+steps:
+  - template: templates/create-gcp-tfstate-buckets.yml
+    parameters:
+      project_id: ${{ parameters.project_id }}
+      sigla: ${{ parameters.sigla }}
+      bucket_infra: ${{ parameters.bucket_infra }}
+      bucket_iam: ${{ parameters.bucket_iam }}
+      gcp_location: ${{ parameters.gcp_location }}
