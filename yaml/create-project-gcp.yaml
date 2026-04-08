@@ -1,0 +1,104 @@
+# =============================================================
+# LANDING ZONE PIPELINE - GCP Project Creation
+# =============================================================
+
+trigger: none
+
+parameters:
+  - name: projectName
+    displayName: "Nome do Projeto (ex: prj-decci-prd)"
+    type: string
+
+  - name: folderId
+    displayName: "Folder ID do GCP"
+    type: string
+
+  - name: billingAccount
+    displayName: "Billing Account"
+    type: string
+    default: "0185E2-C40114-3FEE72"
+
+  - name: accessPolicy
+    displayName: "Access Policy ID"
+    type: string
+    default: "412713748361"
+
+  - name: perimeter
+    displayName: "Nome do Perímetro"
+    type: string
+    default: "perimetroprojetoscaixa"
+
+jobs:
+  - job: LandingZone
+    displayName: "Provisionar Landing Zone GCP"
+    pool:
+      vmImage: "ubuntu-latest"
+    steps:
+
+      - task: Bash@3
+        displayName: "[1/5] Criar Projeto"
+        inputs:
+          targetType: inline
+          script: |
+            gcloud projects create "${{ parameters.projectName }}" \
+              --name="${{ parameters.projectName }}" \
+              --folder="${{ parameters.folderId }}"
+
+      - task: Bash@3
+        displayName: "Aguardar propagação do projeto"
+        inputs:
+          targetType: inline
+          script: |
+            echo "Aguardando 30s para o projeto propagar no GCP..."
+            sleep 30
+
+      - task: Bash@3
+        displayName: "[2/5] Capturar Project Number"
+        name: GetProjectNumber
+        inputs:
+          targetType: inline
+          script: |
+            PROJECT_NUMBER=$(gcloud projects describe "${{ parameters.projectName }}" \
+              --format="value(projectNumber)")
+
+            echo "Project Number capturado: $PROJECT_NUMBER"
+            echo "##vso[task.setvariable variable=PROJECT_NUMBER;isOutput=true]$PROJECT_NUMBER"
+
+      - task: Bash@3
+        displayName: "[3/5] Vincular Billing Account"
+        inputs:
+          targetType: inline
+          script: |
+            gcloud beta billing projects link \
+              "$(GetProjectNumber.PROJECT_NUMBER)" \
+              --billing-account="${{ parameters.billingAccount }}"
+
+      - task: Bash@3
+        displayName: "[4/5] Adicionar ao Perímetro de Acesso"
+        inputs:
+          targetType: inline
+          script: |
+            gcloud access-context-manager perimeters update \
+              "accessPolicies/${{ parameters.accessPolicy }}/servicePerimeters/${{ parameters.perimeter }}" \
+              --policy="${{ parameters.accessPolicy }}" \
+              --add-resources="projects/$(GetProjectNumber.PROJECT_NUMBER)"
+
+      - task: Bash@3
+        displayName: "[5/5] Habilitar Compute API"
+        inputs:
+          targetType: inline
+          script: |
+            gcloud services enable compute.googleapis.com \
+              --project="${{ parameters.projectName }}"
+
+      - task: Bash@3
+        displayName: "Resumo"
+        inputs:
+          targetType: inline
+          script: |
+            echo "=================================================="
+            echo "✅ Landing Zone provisionada com sucesso!"
+            echo "   Projeto:        ${{ parameters.projectName }}"
+            echo "   Folder:         ${{ parameters.folderId }}"
+            echo "   Project Number: $(GetProjectNumber.PROJECT_NUMBER)"
+            echo "=================================================="
