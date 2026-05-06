@@ -8,11 +8,10 @@ variable "composer_settings" {
     # --------------------------------------------------------
     # Identificação
     # --------------------------------------------------------
-    project_id     = string
-    project_number = string # Necessário para o Composer Agent SA
+    project_id      = string
     host_project_id = string # Projeto host da Shared VPC
-    sigla          = string
-    region         = string
+    sigla           = string
+    region          = string
 
     # --------------------------------------------------------
     # Imagem
@@ -83,8 +82,14 @@ variable "composer_settings" {
     env_variables            = optional(map(string), {})
     pypi_packages            = optional(map(string), {})
 
-    # Variáveis sensíveis armazenadas no Secret Manager
-    airflow_secret_vars = optional(map(string), {})
+    # Senhas/credenciais geradas pelo Terraform e salvas no Secret Manager.
+    # Apenas para segredos cujo ciclo de vida é 100% controlado pelo Terraform
+    # (ex: db_password de banco interno). Segredos externos (tokens de API,
+    # chaves de terceiros) devem ser gerenciados fora do módulo.
+    generated_secrets = optional(map(object({
+      length  = optional(number, 32)
+      special = optional(bool, true)
+    })), {})
 
     # --------------------------------------------------------
     # Recursos opcionais

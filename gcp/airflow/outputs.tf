@@ -2,6 +2,14 @@
 # Cloud Composer 3 - Outputs
 # ============================================================
 
+output "project_numbers" {
+  description = "Project numbers capturados via data source (útil para debug e referência)"
+  value = {
+    for k, v in data.google_project.service :
+    k => v.number
+  }
+}
+
 output "composer_environment_names" {
   description = "Nomes dos ambientes Composer criados"
   value = {
@@ -43,11 +51,19 @@ output "composer_sa_ids" {
   }
 }
 
-output "airflow_secret_ids" {
-  description = "IDs dos secrets criados no Secret Manager para cada ambiente"
+output "generated_secret_ids" {
+  description = "IDs dos secrets gerados pelo Terraform no Secret Manager (um por ambiente/secret_name)"
   value = {
-    for k, v in google_secret_manager_secret.airflow_vars :
+    for k, v in google_secret_manager_secret.generated :
     k => v.secret_id
+  }
+}
+
+output "generated_secret_names" {
+  description = "Nomes completos dos secrets (formato: projects/{project}/secrets/{id}) para referência em outros módulos"
+  value = {
+    for k, v in google_secret_manager_secret.generated :
+    k => v.name
   }
 }
 

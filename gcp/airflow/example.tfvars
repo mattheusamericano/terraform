@@ -5,7 +5,6 @@
 composer_settings = {
   "pipeline-dados" = {
     project_id      = "meu-projeto-12345"
-    project_number  = "123456789012"
     host_project_id = "meu-host-vpc-projeto"
     sigla           = "dpipe"
     region          = "us-central1"
@@ -66,10 +65,18 @@ composer_settings = {
       "pandas"                          = ">=2.0.0"
     }
 
-    # Variáveis sensíveis -> vão para o Secret Manager
-    airflow_secret_vars = {
-      "db_password"  = "senha-super-secreta"
-      "api_token"    = "token-da-api-externa"
+    # Segredos gerados pelo Terraform -> Secret Manager
+    # O valor é gerado via random_password; nunca passa pelo tfvars.
+    # Segredos externos (tokens de API, chaves de terceiros) NÃO entram aqui.
+    generated_secrets = {
+      "db_password" = {
+        length  = 32
+        special = true
+      }
+      "internal_api_key" = {
+        length  = 48
+        special = false # Apenas alfanumérico, para sistemas que não aceitam especiais
+      }
     }
 
     # Retenção de logs de tasks

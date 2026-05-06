@@ -56,7 +56,7 @@ resource "google_project_iam_member" "composer_agent_host_network" {
 
   project = each.value.host_project_id
   role    = "roles/compute.networkUser"
-  member  = "serviceAccount:service-${each.value.project_number}@cloudcomposer-accounts.iam.gserviceaccount.com"
+  member  = "serviceAccount:service-${data.google_project.service[each.key].number}@cloudcomposer-accounts.iam.gserviceaccount.com"
 }
 
 resource "google_project_iam_member" "composer_agent_roles" {
@@ -64,28 +64,54 @@ resource "google_project_iam_member" "composer_agent_roles" {
 
   project = each.value.project_id
   role    = "roles/composer.ServiceAgentV2Ext"
-  member  = "serviceAccount:service-${each.value.project_number}@cloudcomposer-accounts.iam.gserviceaccount.com"
+  member  = "serviceAccount:service-${data.google_project.service[each.key].number}@cloudcomposer-accounts.iam.gserviceaccount.com"
 }
 
 # --------------------------------------------------------
-# Secret Manager - variáveis sensíveis do Airflow
+# Secret Manager - senhas geradas pelo Terraform
+# (ex: db_password, credenciais internas)
+# Segredos externos (tokens de API, etc.) devem ser
+# gerenciados fora do Terraform e apenas referenciados aqui.
 # --------------------------------------------------------
-resource "google_secret_manager_secret" "airflow_vars" {
+
+locals {
+  # Flatten: um entry por (ambiente, secret_name)
+  generated_secrets_flat = flatten([
+    for k, v in var.composer_settings : [
+      for secret_name, cfg in v.generated_secrets : {
+        key         = "${k}__${secret_name}"
+        env_key     = k
+        project_id  = v.project_id
+        secret_name = secret_name
+        length      = cfg.length
+        special     = cfg.special
+      }
+    ]
+  ])
+}
+
+# Gera senhas aleatórias para cada secret configurado
+resource "random_password" "generated" {
   for_each = {
-    for pair in flatten([
-      for k, v in var.composer_settings : [
-        for secret_key in keys(v.airflow_secret_vars) : {
-          key        = "${k}__${secret_key}"
-          env_key    = k
-          project_id = v.project_id
-          secret_key = secret_key
-        }
-      ]
-    ]) : pair.key => pair
-    if length(var.composer_settings[pair.env_key].airflow_secret_vars) > 0
+    for pair in local.generated_secrets_flat : pair.key => pair
   }
 
-  secret_id = "airflow-var-${each.value.env_key}-${each.value.secret_key}-${terraform.workspace}"
+  length           = each.value.length
+  special          = each.value.special
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+
+  lifecycle {
+    ignore_changes = all # Nunca rotaciona automaticamente
+  }
+}
+
+# Cria o secret no Secret Manager
+resource "google_secret_manager_secret" "generated" {
+  for_each = {
+    for pair in local.generated_secrets_flat : pair.key => pair
+  }
+
+  secret_id = "airflow-var-${each.value.env_key}-${each.value.secret_name}-${terraform.workspace}"
   project   = each.value.project_id
 
   replication {
@@ -96,50 +122,32 @@ resource "google_secret_manager_secret" "airflow_vars" {
     environment = terraform.workspace
     managed_by  = "terraform"
     composer    = each.value.env_key
+    generated   = "true"
   }
 }
 
-resource "google_secret_manager_secret_version" "airflow_vars" {
+# Publica a versão inicial com o valor gerado
+resource "google_secret_manager_secret_version" "generated" {
   for_each = {
-    for pair in flatten([
-      for k, v in var.composer_settings : [
-        for secret_key, secret_val in v.airflow_secret_vars : {
-          key        = "${k}__${secret_key}"
-          env_key    = k
-          secret_key = secret_key
-          secret_val = secret_val
-        }
-      ]
-    ]) : pair.key => pair
-    if length(var.composer_settings[pair.env_key].airflow_secret_vars) > 0
+    for pair in local.generated_secrets_flat : pair.key => pair
   }
 
-  secret      = google_secret_manager_secret.airflow_vars[each.key].id
-  secret_data = each.value.secret_val
+  secret      = google_secret_manager_secret.generated[each.key].id
+  secret_data = random_password.generated[each.key].result
 
   lifecycle {
-    ignore_changes = [secret_data] # Evita re-apply desnecessário
+    ignore_changes = [secret_data] # Valor gerado uma vez; rotação é manual
   }
 }
 
-# IAM - SA do Composer pode acessar os secrets
-resource "google_secret_manager_secret_iam_member" "composer_sa_secret_access" {
+# IAM - SA do Composer acessa os secrets gerados
+resource "google_secret_manager_secret_iam_member" "composer_sa_generated_access" {
   for_each = {
-    for pair in flatten([
-      for k, v in var.composer_settings : [
-        for secret_key in keys(v.airflow_secret_vars) : {
-          key        = "${k}__${secret_key}"
-          env_key    = k
-          project_id = v.project_id
-          secret_key = secret_key
-        }
-      ]
-    ]) : pair.key => pair
-    if length(var.composer_settings[pair.env_key].airflow_secret_vars) > 0
+    for pair in local.generated_secrets_flat : pair.key => pair
   }
 
   project   = each.value.project_id
-  secret_id = google_secret_manager_secret.airflow_vars[each.key].secret_id
+  secret_id = google_secret_manager_secret.generated[each.key].secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.composer_sa[each.value.env_key].email}"
 }
@@ -286,5 +294,6 @@ resource "google_composer_environment" "composer" {
     google_project_iam_member.composer_sa_host_network,
     google_project_iam_member.composer_agent_host_network,
     google_project_iam_member.composer_agent_roles,
+    google_secret_manager_secret_iam_member.composer_sa_generated_access,
   ]
 }
