@@ -4,12 +4,9 @@
 
 # Fleet membership - registra o cluster na fleet do projeto
 resource "google_gke_hub_membership" "membership" {
-  for_each = {
-    for k, v in var.gke_cluster_settings : k => v
-    if v.enable_service_mesh
-  }
+  for_each = var.gke_cluster_settings
 
-  membership_id = "${each.key}-${each.value.sigla}-${terraform.workspace}"
+  membership_id = "gke-${each.value.sigla}-${terraform.workspace}"
   project       = each.value.project_id
 
   endpoint {
@@ -23,10 +20,7 @@ resource "google_gke_hub_membership" "membership" {
 
 # Habilita o feature de Service Mesh na fleet
 resource "google_gke_hub_feature" "servicemesh" {
-  for_each = {
-    for k, v in var.gke_cluster_settings : k => v
-    if v.enable_service_mesh
-  }
+  for_each = var.gke_cluster_settings
 
   name     = "servicemesh"
   location = "global"
@@ -37,10 +31,7 @@ resource "google_gke_hub_feature" "servicemesh" {
 
 # Configura o Service Mesh no membership
 resource "google_gke_hub_feature_membership" "servicemesh_config" {
-  for_each = {
-    for k, v in var.gke_cluster_settings : k => v
-    if v.enable_service_mesh
-  }
+  for_each = var.gke_cluster_settings
 
   location   = "global"
   feature    = "servicemesh"
