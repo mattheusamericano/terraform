@@ -1,0 +1,14 @@
+# Cancelar o curl atual (Ctrl+C) e rodar isso dentro do pod:
+
+# Extrair a cadeia completa direto do servidor do Neon
+openssl s_client -connect auth.neon.com.br:443 \
+  -showcerts 2>/dev/null \
+  | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/' \
+  > /tmp/neon-chain.pem
+
+# Verificar o que foi extraído
+openssl x509 -in /tmp/neon-chain.pem -noout -issuer -subject
+
+# Testar com o certificado extraído
+curl -v --cacert /tmp/neon-chain.pem \
+  https://auth.neon.com.br/of-auth/realms/neon/protocol/openid-connect/certs
