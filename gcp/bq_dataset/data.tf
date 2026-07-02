@@ -1,28 +1,20 @@
 data "google_project" "project" {
-  for_each = var.bq_dataset_settings
+  for_each = local.distinct_projects_with_kms
 
-  project_id = each.value.project_id
+  project_id = each.key
 }
 
 data "google_kms_key_ring" "keyring" {
-  for_each = {
-    for k, v in var.bq_dataset_settings :
-    k => v
-    if v.kms_key != null
-  }
+  for_each = local.distinct_projects_with_kms
 
-  name     = each.value.key_ring
-  location = each.value.region
-  project  = each.value.kms_project_id
+  name     = each.value[0].key_ring
+  location = each.value[0].region
+  project  = each.value[0].kms_project_id
 }
 
 data "google_kms_crypto_key" "keycrypto" {
-  for_each = {
-    for k, v in var.bq_dataset_settings :
-    k => v
-    if v.kms_key != null
-  }
+  for_each = local.distinct_projects_with_kms
 
-  name      = each.value.key_crypto
+  name      = each.value[0].key_crypto
   key_ring = data.google_kms_key_ring.keyring[each.key].id
 }

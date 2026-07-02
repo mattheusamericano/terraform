@@ -14,9 +14,9 @@ resource "google_bigquery_dataset" "dataset" {
   labels = each.value.labels
 
   dynamic "default_encryption_configuration" {
-    for_each = each.value.kms_key != null ? [1] : []
+    for_each = each.value.key_ring != null ? [1] : []
     content {
-      kms_key_name = each.value.kms_key
+      kms_key_name = "projects/prj-hsm-services-des/locations/${each.value.region}/keyRings/${each.value.key_ring}/cryptoKeys/${each.value.key_crypto}"
     }
   }
 }

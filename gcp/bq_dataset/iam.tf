@@ -1,9 +1,9 @@
  # Deduplica por project_id
 locals {
   distinct_projects_with_kms = {
-    for k, v in var.bq_dataset_settings :
-    v.project_id => v
-    if v.kms_key != null
+    for k, v in var.bq_dataset_settings : 
+    v.project_id => v...
+    if v.key_ring != null
   }
 }
 
