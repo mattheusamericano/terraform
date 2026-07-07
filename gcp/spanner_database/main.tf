@@ -8,4 +8,12 @@ resource "google_spanner_database" "this" {
   ddl                      = each.value.ddl
   deletion_protection      = each.value.deletion_protection
   version_retention_period = each.value.version_retention_period
+
+  dynamic "encryption_config" {
+    for_each = each.value.encryption != null ? [each.value.encryption] : []
+    content {
+      kms_key_name  = encryption_config.value.kms_key_name
+      kms_key_names = encryption_config.value.kms_key_names
+    }
+  }
 }
