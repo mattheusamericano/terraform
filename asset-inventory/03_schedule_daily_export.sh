@@ -55,13 +55,6 @@ gcloud asset export \\
   --bigquery-table="projects/${PROJECT_ID}/datasets/${DATASET}/tables/inventory_resources" \\
   --partition-key=request-time \\
   --output-bigquery-force
-
-gcloud asset export \\
-  --organization="${ORG_ID}" \\
-  --content-type=iam-policy \\
-  --bigquery-table="projects/${PROJECT_ID}/datasets/${DATASET}/tables/inventory_iam_policies" \\
-  --partition-key=request-time \\
-  --output-bigquery-force
 EOF
 
 IMAGE="gcr.io/${PROJECT_ID}/asset-export-job"

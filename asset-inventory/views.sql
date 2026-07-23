@@ -16,9 +16,9 @@
 --   ancestors        ARRAY<STRING>
 --   update_time      TIMESTAMP
 --
--- (content-type=iam-policy, tabela inventory_iam_policies):
---   name STRING, asset_type STRING, ancestors ARRAY<STRING>,
---   iam_policy RECORD (bindings ARRAY<RECORD(role, members)>), update_time TIMESTAMP
+-- Escopo definido: só recurso de infra (content-type=resource). IAM fica de
+-- fora por enquanto — se precisar depois, é só rodar o export de iam-policy
+-- e reativar a view v_iam_bindings_flat que foi removida daqui.
 
 -- 1) Inventário mais recente, já achatado (dedup por último snapshot de cada asset)
 CREATE OR REPLACE VIEW `terraform-442218.asset_inventory.v_inventory_latest` AS
@@ -91,22 +91,7 @@ SELECT
 FROM `terraform-442218.asset_inventory.v_inventory_latest`
 ORDER BY update_time ASC;
 
--- 5) IAM bindings em formato tabular — "quem tem acesso a quê" de forma consultável
-CREATE OR REPLACE VIEW `terraform-442218.asset_inventory.v_iam_bindings_flat` AS
-SELECT
-  name AS resource_name,
-  asset_type,
-  binding.role AS role,
-  member,
-  update_time
-FROM `terraform-442218.asset_inventory.inventory_iam_policies`,
-  UNNEST(iam_policy.bindings) AS binding,
-  UNNEST(binding.members) AS member
-QUALIFY ROW_NUMBER() OVER (
-  PARTITION BY name, binding.role, member ORDER BY update_time DESC
-) = 1;
-
--- 6) (Opcional) Custo por recurso, se você também exportar Billing para BigQuery.
+-- 5) (Opcional) Custo por recurso, se você também exportar Billing para BigQuery.
 -- Descomente e ajuste os nomes de tabela/coluna do seu billing export.
 --
 -- CREATE OR REPLACE VIEW `terraform-442218.asset_inventory.v_custo_por_recurso` AS

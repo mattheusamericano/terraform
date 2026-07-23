@@ -17,13 +17,9 @@ gcloud asset export \
   --partition-key=request-time \
   --output-bigquery-force
 
-echo "Exportando IAM POLICIES (quem tem acesso a quê)..."
-gcloud asset export \
-  --organization="${ORG_ID}" \
-  --content-type=iam-policy \
-  --bigquery-table="projects/${PROJECT_ID}/datasets/${DATASET}/tables/inventory_iam_policies" \
-  --partition-key=request-time \
-  --output-bigquery-force
+# Escopo atual: só recurso de infra. Export de IAM (content-type=iam-policy)
+# fica de fora por enquanto — se precisar depois, é só reativar um bloco
+# igual ao de cima trocando --content-type=resource por --content-type=iam-policy.
 
-echo "Exportação concluída. Confira as tabelas em ${PROJECT_ID}:${DATASET}"
+echo "Exportação concluída. Confira a tabela em ${PROJECT_ID}:${DATASET}"
 echo "Nota: exports de organização podem levar alguns minutos para finalizar."
