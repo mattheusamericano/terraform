@@ -1,0 +1,56 @@
+substitutions:
+  _DATASET: 'teste_fluxo_ci_cd'
+  _TABLE: 'eventos'
+  _LOCATION: 'southamerica-east1'
+
+steps:
+  # 1. Cria o dataset (idempotente - segue mesmo se já existir)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'criar-dataset'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        bq mk --dataset --location="${_LOCATION}" \
+          "$PROJECT_ID:${_DATASET}" || echo "dataset já existe, seguindo"
+
+  # 2. Cria a tabela a partir do schema.json (idempotente)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'criar-tabela'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        bq mk --table \
+          "$PROJECT_ID:${_DATASET}.${_TABLE}" \
+          schema.json || echo "tabela já existe, seguindo"
+    waitFor: ['criar-dataset']
+
+  # 3. Carrega os dados de exemplo (substitui o conteúdo a cada execução)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'carregar-dados'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        bq load \
+          --source_format=NEWLINE_DELIMITED_JSON \
+          --replace \
+          "$PROJECT_ID:${_DATASET}.${_TABLE}" \
+          data.jsonl \
+          schema.json
+    waitFor: ['criar-tabela']
+
+  # 4. Query de validação - confere que os dados chegaram
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'validar-dados'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        bq query --use_legacy_sql=false \
+          "SELECT COUNT(*) as total FROM \`$PROJECT_ID.${_DATASET}.${_TABLE}\`"
+    waitFor: ['carregar-dados']
+
+options:
+  logging: CLOUD_LOGGING_ONLY

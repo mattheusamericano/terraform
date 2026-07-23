@@ -1,0 +1,57 @@
+name: CI + Deliver to Cloud Build (CD) - BigQuery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bigquery-teste/**'
+      - '.github/workflows/ci-cd.yml'
+
+env:
+  GCP_PROJECT_ID: seu-projeto-gcp
+  WORKDIR: bigquery-teste
+
+jobs:
+  ci:
+    name: CI - valida schema e dados
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Setup Node (só para rodar a validação)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validar schema.json e data.jsonl
+        working-directory: ${{ env.WORKDIR }}
+        run: npm test
+
+  cd:
+    name: CD - entrega pro Cloud Build
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # necessário para Workload Identity Federation
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Autenticar na GCP (Workload Identity Federation)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/SEU_NUMERO_PROJETO/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: cloud-build-deployer@seu-projeto-gcp.iam.gserviceaccount.com
+
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Enviar código para o Cloud Build (dispara cloudbuild.yaml)
+        working-directory: ${{ env.WORKDIR }}
+        run: |
+          gcloud builds submit . \
+            --config=cloudbuild.yaml \
+            --project="${{ env.GCP_PROJECT_ID }}"
