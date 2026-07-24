@@ -91,7 +91,29 @@ SELECT
 FROM `terraform-442218.asset_inventory.v_inventory_latest`
 ORDER BY update_time ASC;
 
--- 5) (Opcional) Custo por recurso, se você também exportar Billing para BigQuery.
+-- 5) Inventário "limpo" de infraestrutura de verdade — sem execuções de job,
+--    pipelines, metadados de API/organização e nada de IAM, que só sujam o
+--    relatório da equipe de infra. Use esta view (em vez de v_inventory_latest)
+--    nos gráficos/tabelas do dashboard de infraestrutura.
+CREATE OR REPLACE VIEW `terraform-442218.asset_inventory.v_inventory_infra` AS
+SELECT *
+FROM `terraform-442218.asset_inventory.v_inventory_latest`
+WHERE asset_type NOT IN (
+  -- execuções/pipelines — não são recursos provisionados, são "eventos"
+  'aiplatform.googleapis.com/NotebookExecutionJob',
+  'datalineage.googleapis.com/Process',
+  'dataform.googleapis.com/WorkflowInvocation',
+  'dataform.googleapis.com/Repository',
+  'run.googleapis.com/Execution',
+
+  -- metadados de API/organização — não são recursos de infraestrutura
+  'serviceusage.googleapis.com/Service',
+  'cloudresourcemanager.googleapis.com/TagBinding'
+)
+-- todo tipo de IAM fora (service accounts, roles, políticas, etc.)
+AND asset_type NOT LIKE 'iam.googleapis.com/%';
+
+-- 6) (Opcional) Custo por recurso, se você também exportar Billing para BigQuery.
 -- Descomente e ajuste os nomes de tabela/coluna do seu billing export.
 --
 -- CREATE OR REPLACE VIEW `terraform-442218.asset_inventory.v_custo_por_recurso` AS
