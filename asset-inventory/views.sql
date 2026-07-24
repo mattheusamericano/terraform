@@ -92,9 +92,11 @@ FROM `terraform-442218.asset_inventory.v_inventory_latest`
 ORDER BY update_time ASC;
 
 -- 5) Inventário "limpo" de infraestrutura de verdade — sem execuções de job,
---    pipelines, metadados de API/organização e nada de IAM, que só sujam o
---    relatório da equipe de infra. Use esta view (em vez de v_inventory_latest)
---    nos gráficos/tabelas do dashboard de infraestrutura.
+--    pipelines/CI-CD, metadados de API/organização e nada de IAM, que só
+--    sujam o relatório da equipe de infra. Use esta view (em vez de
+--    v_inventory_latest) nos gráficos/tabelas do dashboard de infraestrutura.
+--    O que sai daqui não é descartado — vira a view v_inventory_pipelines
+--    logo abaixo, como seção separada do dashboard.
 CREATE OR REPLACE VIEW `terraform-442218.asset_inventory.v_inventory_infra` AS
 SELECT *
 FROM `terraform-442218.asset_inventory.v_inventory_latest`
@@ -104,14 +106,55 @@ WHERE asset_type NOT IN (
   'datalineage.googleapis.com/Process',
   'dataform.googleapis.com/WorkflowInvocation',
   'dataform.googleapis.com/Repository',
-  'run.googleapis.com/Execution',
 
   -- metadados de API/organização — não são recursos de infraestrutura
   'serviceusage.googleapis.com/Service',
   'cloudresourcemanager.googleapis.com/TagBinding'
 )
 -- todo tipo de IAM fora (service accounts, roles, políticas, etc.)
-AND asset_type NOT LIKE 'iam.googleapis.com/%';
+AND asset_type NOT LIKE 'iam.googleapis.com/%'
+-- grupo de Run/Cloud Build/Workflows fora — vira seção própria (v_inventory_pipelines)
+-- EXCEÇÃO: WorkerPool de Run e de Cloud Build contam como infraestrutura
+-- de verdade (são os workers provisionados, não execuções/pipelines em si)
+AND (asset_type NOT LIKE 'run.googleapis.com/%' OR asset_type = 'run.googleapis.com/WorkerPool')
+AND (asset_type NOT LIKE 'cloudbuild.googleapis.com/%' OR asset_type = 'cloudbuild.googleapis.com/WorkerPool')
+AND asset_type NOT LIKE 'workflows.googleapis.com/%';
+
+-- 5b) Inventário à parte para Run / Execution Job / Build / Workflows —
+--     tudo que é execução, pipeline e CI/CD, separado da infra "de verdade".
+--     Baseado no levantamento real do seu projeto em 23/07/2026:
+--       aiplatform.googleapis.com/NotebookExecutionJob   65.048
+--       dataform.googleapis.com/WorkflowInvocation        2.465
+--       cloudbuild.googleapis.com/Build                     519
+--       run.googleapis.com/Revision                         420
+--       run.googleapis.com/Execution                         78
+--       run.googleapis.com/Service                           49
+--       cloudbuild.googleapis.com/BuildTrigger               11
+--       cloudbuild.googleapis.com/GlobalTriggerSettings       7
+--       cloudbuild.googleapis.com/Connection                  4
+--       run.googleapis.com/Job                                3
+--       cloudbuild.googleapis.com/WorkerPool                  3
+--       cloudbuild.googleapis.com/Repository                  3
+--       workflows.googleapis.com/Workflow                     2
+--       run.googleapis.com/WorkerPool                         1
+CREATE OR REPLACE VIEW `terraform-442218.asset_inventory.v_inventory_pipelines` AS
+SELECT *
+FROM `terraform-442218.asset_inventory.v_inventory_latest`
+WHERE
+  (
+    asset_type LIKE 'run.googleapis.com/%'
+    OR asset_type LIKE 'cloudbuild.googleapis.com/%'
+    OR asset_type LIKE 'workflows.googleapis.com/%'
+    OR asset_type IN (
+      'aiplatform.googleapis.com/NotebookExecutionJob',
+      'dataform.googleapis.com/WorkflowInvocation'
+    )
+  )
+  -- WorkerPool de Run/Cloud Build fica só na v_inventory_infra, não aqui
+  AND asset_type NOT IN (
+    'run.googleapis.com/WorkerPool',
+    'cloudbuild.googleapis.com/WorkerPool'
+  );
 
 -- 6) (Opcional) Custo por recurso, se você também exportar Billing para BigQuery.
 -- Descomente e ajuste os nomes de tabela/coluna do seu billing export.
