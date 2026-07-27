@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Empacota o export do Cloud Asset Inventory num Cloud Run Job e agenda
-# execução diária via Cloud Scheduler, para manter o inventário sempre atualizado.
+# execução SEMANAL via Cloud Scheduler, para manter o inventário atualizado.
+# (nome do arquivo ficou de uma versão anterior diária — o conteúdo abaixo já
+# está ajustado pra rodar 1x por semana, custo bem menor)
 set -euo pipefail
 
 # ---- ajuste estas variáveis ----
@@ -10,7 +12,10 @@ DATASET="asset_inventory"
 REGION="southamerica-east1"
 SA_NAME="asset-export-runner"
 JOB_NAME="asset-export-job"
-SCHEDULER_NAME="asset-export-daily"
+SCHEDULER_NAME="asset-export-weekly"
+# Dia/hora da execução semanal: toda segunda-feira às 06:00 (America/Sao_Paulo)
+CRON_SCHEDULE="0 6 * * 1"
+TIME_ZONE="America/Sao_Paulo"
 # ---------------------------------
 
 SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -70,20 +75,20 @@ gcloud run jobs deploy "${JOB_NAME}" \
   --max-retries=1 \
   --task-timeout=900s
 
-echo "Agendando execução diária às 06:00 (America/Sao_Paulo)..."
+echo "Agendando execução semanal (${CRON_SCHEDULE}, ${TIME_ZONE})..."
 gcloud scheduler jobs create http "${SCHEDULER_NAME}" \
   --project="${PROJECT_ID}" \
   --location="${REGION}" \
-  --schedule="0 6 * * *" \
-  --time-zone="America/Sao_Paulo" \
+  --schedule="${CRON_SCHEDULE}" \
+  --time-zone="${TIME_ZONE}" \
   --uri="https://${REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${PROJECT_ID}/jobs/${JOB_NAME}:run" \
   --http-method=POST \
   --oauth-service-account-email="${SA_EMAIL}" \
   || gcloud scheduler jobs update http "${SCHEDULER_NAME}" \
        --project="${PROJECT_ID}" \
        --location="${REGION}" \
-       --schedule="0 6 * * *" \
-       --time-zone="America/Sao_Paulo"
+       --schedule="${CRON_SCHEDULE}" \
+       --time-zone="${TIME_ZONE}"
 
 rm -rf "${WORKDIR}"
-echo "Pronto. O inventário será exportado todo dia às 06:00."
+echo "Pronto. O inventário será exportado toda segunda-feira às 06:00."
