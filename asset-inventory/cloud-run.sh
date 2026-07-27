@@ -71,21 +71,21 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${RUNTIME_SA}" \
   --role="roles/run.invoker"
 
+# IMPORTANTE: dentro de um perímetro VPC-SC, o Cloud Scheduler só aceita
+# acionar Cloud Run Jobs pelo endpoint v2 da API (não o v1/namespaces antigo).
+# https://docs.cloud.google.com/run/docs/execute/jobs-on-schedule-vpc-sc-perimeter
+RUN_JOB_URI="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}:run"
+
 echo "Agendando execução semanal (${CRON_SCHEDULE}, ${TIME_ZONE})..."
 gcloud scheduler jobs create http "${SCHEDULER_NAME}" \
   --project="${PROJECT_ID}" \
   --location="${REGION}" \
   --schedule="${CRON_SCHEDULE}" \
   --time-zone="${TIME_ZONE}" \
-  --uri="https://${REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${PROJECT_ID}/jobs/${JOB_NAME}:run" \
+  --uri="${RUN_JOB_URI}" \
   --http-method=POST \
   --oauth-service-account-email="${RUNTIME_SA}" \
   || gcloud scheduler jobs update http "${SCHEDULER_NAME}" \
        --project="${PROJECT_ID}" \
        --location="${REGION}" \
        --schedule="${CRON_SCHEDULE}" \
-       --time-zone="${TIME_ZONE}"
-
-echo ""
-echo "Pronto. Pra testar agora, sem esperar a segunda-feira:"
-echo "  gcloud run jobs execute ${JOB_NAME} --region=${REGION} --project=${PROJECT_ID}"
