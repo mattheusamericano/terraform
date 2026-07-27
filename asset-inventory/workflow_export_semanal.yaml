@@ -37,11 +37,15 @@ main:
         assign:
           - operation_name: ${export_response.body.name}
 
+    # Loop de espera: cada sub-step aqui dentro é de UM tipo só (switch OU
+    # call OU assign), nunca misturado no mesmo step - foi isso que quebrou
+    # na versão anterior.
     - loop_espera:
-        switch:
-          - condition: ${tentativa >= max_tentativas}
-            next: timeout
         steps:
+          - checar_timeout:
+              switch:
+                - condition: ${tentativa >= max_tentativas}
+                  next: timeout
           - esperar:
               call: sys.sleep
               args:
@@ -62,6 +66,7 @@ main:
               switch:
                 - condition: ${"done" in op_status.body and op_status.body.done == true}
                   next: verificar_erro
+          - repetir:
               next: loop_espera
 
     - verificar_erro:
