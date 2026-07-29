@@ -1,6 +1,6 @@
 # Reproduz o comando gcloud atualmente usado para o cluster dp-01-pub-des
 
-cluster_settings = {
+dataproc_cluster_settings = {
   "01" = {
     sigla      = "pub"
     project_id = "prj-publisher-poc"
@@ -9,8 +9,8 @@ cluster_settings = {
     subnetwork       = "projects/prj-network-services-des-cef/regions/southamerica-east1/subnetworks/sub-poc-des"
     internal_ip_only = true # --no-address
 
-    service_account         = "sa-wb-01-pub-des@prj-publisher-poc.iam.gserviceaccount.com"
-    service_account_scopes  = ["https://www.googleapis.com/auth/cloud-platform"]
+    # SA é criada pelo próprio módulo: sa-dp-01-pub-des@prj-publisher-poc.iam.gserviceaccount.com
+    service_account_scopes = ["https://www.googleapis.com/auth/cloud-platform"]
 
     master_settings = {
       machine_type      = "n4-standard-2"

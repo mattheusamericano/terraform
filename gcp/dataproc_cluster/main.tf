@@ -13,7 +13,7 @@ resource "google_dataproc_cluster" "this" {
       subnetwork              = each.value.subnetwork
       internal_ip_only        = each.value.internal_ip_only
       tags                    = each.value.tags
-      service_account         = each.value.service_account
+      service_account         = google_service_account.cluster[each.key].email
       service_account_scopes  = each.value.service_account_scopes
     }
 

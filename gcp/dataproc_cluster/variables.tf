@@ -11,8 +11,11 @@ variable "dataproc_cluster_settings" {
     internal_ip_only  = optional(bool, true)
     tags              = optional(list(string), [])
 
-    service_account         = string
-    service_account_scopes  = optional(list(string), ["https://www.googleapis.com/auth/cloud-platform"])
+    # O módulo cria uma SA dedicada por cluster (sa-dp-<key>-<sigla>-<workspace>);
+    # display_name/description são opcionais só para customizar os metadados dela.
+    service_account_display_name = optional(string)
+    service_account_description  = optional(string, "Service Account do cluster Dataproc")
+    service_account_scopes       = optional(list(string), ["https://www.googleapis.com/auth/cloud-platform"])
 
     master_settings = optional(object({
       machine_type      = optional(string, "n4-standard-2")

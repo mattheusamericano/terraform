@@ -5,7 +5,7 @@ resource "google_project_iam_member" "cluster_sa_viewer" {
 
   project = each.value.project_id
   role    = "roles/dataproc.viewer"
-  member  = "serviceAccount:${each.value.service_account}"
+  member  = "serviceAccount:${google_service_account.cluster[each.key].email}"
 }
 
 resource "google_project_iam_member" "cluster_sa_editor" {
@@ -13,7 +13,7 @@ resource "google_project_iam_member" "cluster_sa_editor" {
 
   project = each.value.project_id
   role    = "roles/dataproc.editor"
-  member  = "serviceAccount:${each.value.service_account}"
+  member  = "serviceAccount:${google_service_account.cluster[each.key].email}"
 }
 
 resource "google_project_iam_member" "shared_vpc_network_user" {
