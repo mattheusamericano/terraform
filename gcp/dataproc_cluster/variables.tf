@@ -39,6 +39,12 @@ variable "dataproc_cluster_settings" {
     staging_bucket            = optional(string)
     labels                    = optional(map(string), {})
 
+    # ENGINE_UNSPECIFIED | DEFAULT | LIGHTNING
+    # Habilita o Lightning Engine (não é uma spark property, é o campo cluster_config.engine
+    # da API - equivalente ao "--engine=lightning" do gcloud). Quando LIGHTNING, normalmente
+    # combine com override_properties["spark:spark.dataproc.lightningEngine.runtime"] = "native".
+    engine = optional(string, "DEFAULT")
+
     # IAM - roles/dataproc.viewer + roles/dataproc.editor para a própria SA no próprio projeto
     grant_self_project_dataproc_roles = optional(bool, true)
 

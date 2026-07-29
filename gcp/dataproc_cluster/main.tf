@@ -7,6 +7,7 @@ resource "google_dataproc_cluster" "this" {
 
   cluster_config {
     staging_bucket = each.value.staging_bucket
+    engine          = each.value.engine
 
     gce_cluster_config {
       zone                    = each.value.zone

@@ -30,10 +30,11 @@ dataproc_cluster_settings = {
     optional_components      = ["JUPYTER"]
     enable_component_gateway = true
 
+    # Lightning Engine é o campo cluster_config.engine (equivalente a --engine=lightning
+    # no gcloud), não uma spark property. Valores aceitos: ENGINE_UNSPECIFIED | DEFAULT | LIGHTNING
+    engine = "LIGHTNING"
+
     override_properties = {
-      # no comando gcloud original essa chave é passada sem valor explícito;
-      # confirme com a doc do Lightning Engine se "" é o esperado ou se deve ser "true"
-      "spark:spark.dataproc.engine.lightningEngine" = ""
       "spark:spark.dataproc.lightningEngine.runtime" = "native"
     }
 
