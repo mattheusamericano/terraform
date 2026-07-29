@@ -1,5 +1,5 @@
 resource "google_dataproc_cluster" "this" {
-  for_each = var.cluster_settings
+  for_each = var.dataproc_cluster_settings
 
   name    = "dp-${each.key}-${each.value.sigla}-${terraform.workspace}"
   project = each.value.project_id

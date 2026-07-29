@@ -4,7 +4,7 @@
 # no projeto host da VPC.
 locals {
   shared_vpc_bindings = merge([
-    for k, v in var.cluster_settings : v.shared_vpc_host_project == null ? {} : {
+    for k, v in var.dataproc_cluster_settings : v.shared_vpc_host_project == null ? {} : {
       for suffix, sa_email in {
         dataproc-accounts = "service-${data.google_project.shared_vpc_service_project[k].number}@dataproc-accounts.iam.gserviceaccount.com"
         cloudservices      = "service-${data.google_project.shared_vpc_service_project[k].number}@cloudservices.gserviceaccount.com"
@@ -16,7 +16,7 @@ locals {
   ]...)
 
   additional_bindings = merge([
-    for k, v in var.cluster_settings : {
+    for k, v in var.dataproc_cluster_settings : {
       for bk, b in v.additional_project_bindings : "${k}-${bk}" => b
     }
   ]...)

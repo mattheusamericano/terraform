@@ -1,4 +1,4 @@
-variable "cluster_settings" {
+variable "dataproc_cluster_settings" {
   description = "Mapa de definições de clusters Dataproc (HDI/Spark), uma entrada por cluster a provisionar."
   type = map(object({
     sigla      = string

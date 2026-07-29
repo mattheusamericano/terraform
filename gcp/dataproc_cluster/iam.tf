@@ -1,7 +1,7 @@
 # Bindings aditivos (o módulo não é dono do projeto/recursos externos, apenas concede papéis pontuais)
 
 resource "google_project_iam_member" "cluster_sa_viewer" {
-  for_each = { for k, v in var.cluster_settings : k => v if v.grant_self_project_dataproc_roles }
+  for_each = { for k, v in var.dataproc_cluster_settings : k => v if v.grant_self_project_dataproc_roles }
 
   project = each.value.project_id
   role    = "roles/dataproc.viewer"
@@ -9,7 +9,7 @@ resource "google_project_iam_member" "cluster_sa_viewer" {
 }
 
 resource "google_project_iam_member" "cluster_sa_editor" {
-  for_each = { for k, v in var.cluster_settings : k => v if v.grant_self_project_dataproc_roles }
+  for_each = { for k, v in var.dataproc_cluster_settings : k => v if v.grant_self_project_dataproc_roles }
 
   project = each.value.project_id
   role    = "roles/dataproc.editor"
