@@ -1,5 +1,5 @@
 resource "google_dataproc_session_template" "this" {
-  for_each = var.session_template_settings
+  for_each = var.dataproc_session_template_settings
 
   name     = "projects/${each.value.project_id}/locations/${each.value.location}/sessionTemplates/st-${each.key}-${each.value.sigla}-${terraform.workspace}"
   project  = each.value.project_id
@@ -59,5 +59,5 @@ resource "google_dataproc_session_template" "this" {
     content {}
   }
 
-  depends_on = [google_kms_crypto_key_iam_member.session_kms]
+  depends_on = [time_sleep.iam_propagation]
 }

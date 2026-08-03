@@ -1,4 +1,4 @@
-variable "session_template_settings" {
+variable "dataproc_session_template_settings" {
   description = "Mapa de definições de Dataproc Serverless Session Templates (sessões interativas Jupyter/Spark Connect)."
   type = map(object({
     sigla      = string
@@ -42,5 +42,14 @@ variable "session_template_settings" {
     # ao service agent do Dataproc do project_id sobre a chave (padrão aditivo,
     # já que a chave normalmente pertence a outro projeto)
     grant_kms_encrypter_decrypter = optional(bool, false)
+
+    # VPC compartilhada - concede roles/compute.networkUser no host project da subnet
+    # (execution_settings.subnetwork_uri) tanto para a SA de execução quanto para o
+    # Dataproc Service Agent (service-<num>@dataproc-accounts...), que também é usado
+    # pelo Dataproc Serverless. Sem isso a criação falha por falta de permissão na subnet.
+    shared_vpc_host_project = optional(string)
+
+    # Tempo de espera após os bindings de IAM antes de criar o session template.
+    iam_propagation_wait = optional(string, "60s")
   }))
 }
