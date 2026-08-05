@@ -5,3 +5,10 @@ kubectl get secret secret-app-arc-auth-api -n arc-runners -o yaml \
 kubectl get secret interna-caixa -n arc-runners -o yaml \
   | yq 'del(.metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp, .metadata.ownerReferences, .metadata.selfLink, .metadata.namespace)' \
   > interna-caixa.yaml
+
+
+gcloud container clusters get-credentials <nome-do-cluster-novo> --region <regiao> --project <projeto>
+
+kubectl create namespace arc-runners --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -n arc-runners -f secret-app-arc-auth-api.yaml
+kubectl apply -n arc-runners -f interna-caixa.yaml
