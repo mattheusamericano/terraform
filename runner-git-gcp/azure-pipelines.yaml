@@ -21,10 +21,10 @@ parameters:
     default: 'az'
   - name: serviceConnection
     type: string
-    default: ''
+    default: 'SGCPP01'
   - name: runnerNameSuffix
     type: string
-    default: ''
+    default: 'v2'
 
 jobs:
   - job: deploy
@@ -60,7 +60,7 @@ jobs:
           **/*.yml
         tokenPattern: 'rm'
         encoding: 'auto'
-        writeBOM: true
+        writeBOM: false
         actionOnMissing: 'warn'
         keepToken: false
         actionOnNoFiles: 'continue'
@@ -214,10 +214,7 @@ jobs:
             connectedServiceId: ${{ parameters.serviceConnection }}
 
         - task: Bash@3
-          displayName: 'Deploy ARC ${{ parameters.gitHubOrg }} - ${{ parameters.cloudProvider }} - ${{ parameters.local }}'
-          env:
-            PROJECT_ID: $(project_id)
-            REGION: $(region)
+          displayName: 'GCP - Setup (gcloud/kubectl/helm)'
           inputs:
             targetType: 'inline'
             script: |
@@ -274,14 +271,42 @@ jobs:
               fi
               helm version
 
-              echo "==> Diagnóstico (já autenticado via WIF)"
+        - task: Bash@3
+          displayName: 'GCP - Auth conta + credenciais do cluster'
+          env:
+            PROJECT_ID: $(project_id)
+            REGION: $(region)
+          inputs:
+            targetType: 'inline'
+            script: |
+              echo "==> GOOGLE_APPLICATION_CREDENTIALS = ${GOOGLE_APPLICATION_CREDENTIALS:-<vazia>}"
+              if [ -z "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
+                echo "ERRO: GOOGLE_APPLICATION_CREDENTIALS não definida pela task GcpWifAuth@0." >&2
+                echo "Verifique no log da task 'Auth Google Cloud (WIF)' qual variável ela realmente exporta." >&2
+                exit 1
+              fi
+
+              echo "==> Ativando conta gcloud a partir da credencial WIF"
+              gcloud auth login --cred-file="$GOOGLE_APPLICATION_CREDENTIALS" --quiet
+
+              echo "==> Diagnóstico"
               gcloud auth list --filter=status:ACTIVE
               gcloud config set project "$PROJECT_ID"
               gcloud config set compute/region "$REGION" || true
               gcloud config get-value project
 
+              echo "==> Obtendo credenciais do cluster GKE"
               gcloud container clusters get-credentials $(gkeClusterName) --region southamerica-east1 --project $(project_id)
 
+              echo "==> Smoke test: cluster acessível?"
+              kubectl config current-context
+              kubectl get ns
+
+        - task: Bash@3
+          displayName: 'Deploy ARC ${{ parameters.gitHubOrg }} - ${{ parameters.cloudProvider }} - ${{ parameters.local }}'
+          inputs:
+            targetType: 'inline'
+            script: |
               echo "------------------------ Deploy in  $(gkeClusterName) ------------------------"
               chmod +x "$(Build.SourcesDirectory)/arc-iac-settings/deploy-runner-listerher-and-efemoro-pod.sh"
               if [[ "${{ parameters.local }}" == "nprod" ]]; then
