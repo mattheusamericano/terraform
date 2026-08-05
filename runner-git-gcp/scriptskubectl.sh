@@ -12,3 +12,7 @@ gcloud container clusters get-credentials <nome-do-cluster-novo> --region <regia
 kubectl create namespace arc-runners --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -n arc-runners -f secret-app-arc-auth-api.yaml
 kubectl apply -n arc-runners -f interna-caixa.yaml
+
+
+helm uninstall arc-runner-set-default-gcp-nprod -n arc-runners
+helm uninstall arc-runner-set-imgcustom-v1-gcp-nprod -n arc-runners
