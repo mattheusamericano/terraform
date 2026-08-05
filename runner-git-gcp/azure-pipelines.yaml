@@ -21,10 +21,7 @@ parameters:
     default: 'az'
   - name: serviceConnection
     type: string
-    default: 'SGCPP01'
-  - name: runnerNameSuffix
-    type: string
-    default: 'v2'
+    default: ''
 
 jobs:
   - job: deploy
@@ -311,10 +308,10 @@ jobs:
               chmod +x "$(Build.SourcesDirectory)/arc-iac-settings/deploy-runner-listerher-and-efemoro-pod.sh"
               if [[ "${{ parameters.local }}" == "nprod" ]]; then
                 echo "teste nprod"
-                bash $(Build.SourcesDirectory)/arc-iac-settings/deploy-runner-listerher-and-efemoro-pod.sh nprod all "${{ parameters.runnerNameSuffix }}"
+                bash $(Build.SourcesDirectory)/arc-iac-settings/deploy-runner-listerher-and-efemoro-pod.sh nprod all "v2"
               elif [[ "${{ parameters.local }}" == "prod" ]]; then
                 echo "teste prod"
-                bash $(Build.SourcesDirectory)/arc-iac-settings/deploy-runner-listerher-and-efemoro-pod.sh prod all "${{ parameters.runnerNameSuffix }}"
+                bash $(Build.SourcesDirectory)/arc-iac-settings/deploy-runner-listerher-and-efemoro-pod.sh prod all "v2"
               fi
 
               # ================================
