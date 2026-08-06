@@ -22,3 +22,15 @@ gcloud asset analyze-iam-policy \
   --organization=ORG_ID \
   --identity="serviceAccount:sa-gke-runner-des@prj-runner-services-des.iam.gserviceaccount.com" \
   --format="table(mainAnalysis.analysisResults[].attachedResourceFullName, mainAnalysis.analysisResults[].iamBinding.role)"
+
+# 1. Pega o ID da conta de billing
+gcloud billing accounts list
+
+# 2. Confirma seu papel nela (troque BILLING_ACCOUNT_ID pelo valor do passo 1)
+gcloud billing accounts get-iam-policy BILLING_ACCOUNT_ID \
+  --flatten="bindings[].members" \
+  --filter="bindings.members:$(gcloud config get-value account)" \
+  --format="table(bindings.role)"
+
+# 3. Confirma qual projeto está vinculado a essa conta de billing
+gcloud billing projects list --billing-account=BILLING_ACCOUNT_ID
