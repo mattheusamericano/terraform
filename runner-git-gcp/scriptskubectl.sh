@@ -16,3 +16,11 @@ kubectl apply -n arc-runners -f interna-caixa.yaml
 
 helm uninstall arc-runner-set-default-gcp-nprod -n arc-runners
 helm uninstall arc-runner-set-imgcustom-v1-gcp-nprod -n arc-runners
+
+
+gcloud asset analyze-iam-policy \
+  --organization=ORG_ID \
+  --identity="serviceAccount:sa-gke-runner-des@prj-runner-services-des.iam.gserviceaccount.com" \
+  --format=json > analise.json
+
+jq -r '.mainAnalysis.analysisResults[] | [.attachedResourceFullName, .iamBinding.role] | @tsv' analise.json | sort -u
