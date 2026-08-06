@@ -34,3 +34,14 @@ gcloud billing accounts get-iam-policy BILLING_ACCOUNT_ID \
 
 # 3. Confirma qual projeto está vinculado a essa conta de billing
 gcloud billing projects list --billing-account=BILLING_ACCOUNT_ID
+
+
+
+
+helm upgrade arc-runner-set-imgcustom-v1-gcp-nprod \
+  --namespace arc-runners \
+  --reuse-values \
+  --set minRunners=0 \
+  --set maxRunners=0 \
+  --version 0.12.1 \
+  oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
