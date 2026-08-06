@@ -16,9 +16,9 @@
 --   ancestors        ARRAY<STRING>
 --   update_time      TIMESTAMP
 --
--- Escopo definido: só recurso de infra (content-type=resource). IAM fica de
--- fora por enquanto — se precisar depois, é só rodar o export de iam-policy
--- e reativar a view v_iam_bindings_flat que foi removida daqui.
+-- content-type=iam-policy (tabela inventory_iam_policies):
+--   name STRING, asset_type STRING, ancestors ARRAY<STRING>,
+--   iam_policy RECORD (bindings ARRAY<RECORD(role, members)>), update_time TIMESTAMP
 
 -- 1) Inventário mais recente, já achatado (dedup por último snapshot de cada asset)
 CREATE OR REPLACE VIEW `terraform-442218.asset_inventory.v_inventory_latest` AS
@@ -156,16 +156,16 @@ WHERE
     'cloudbuild.googleapis.com/WorkerPool'
   );
 
--- 6) (Opcional) Custo por recurso, se você também exportar Billing para BigQuery.
--- Descomente e ajuste os nomes de tabela/coluna do seu billing export.
---
--- CREATE OR REPLACE VIEW `terraform-442218.asset_inventory.v_custo_por_recurso` AS
--- SELECT
---   inv.project_ancestor,
---   inv.asset_type,
---   b.sku.description AS sku,
---   SUM(b.cost) AS custo_total
--- FROM `terraform-442218.billing_export.gcp_billing_export_v1_XXXXXX` b
--- JOIN `terraform-442218.asset_inventory.v_inventory_latest` inv
---   ON b.project.id = REPLACE(inv.project_ancestor, 'projects/', '')
--- GROUP BY 1, 2, 3;
+-- 6) IAM bindings em formato tabular — "quem tem acesso a quê" de forma
+--    consultável. Depende da tabela inventory_iam_policies (export com
+--    --content-type=iam-policy, já incluído no 04_cloudrun_privado.sh).
+CREATE OR REPLACE VIEW `terraform-442218.asset_inventory.v_iam_bindings_flat` AS
+SELECT
+  name AS resource_name,
+  asset_type,
+  (SELECT a FROM UNNEST(ancestors) a WHERE a LIKE 'projects/%' LIMIT 1) AS project_ancestor,
+  binding.role AS role,
+  member,
+  update_time
+FROM `terraform-442218.asset_inventory.inventory_iam_policies`,
+  UNNEST(iam_policy.bindings) AS binding,

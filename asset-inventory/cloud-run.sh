@@ -13,7 +13,8 @@ NETWORK_NAME="vpc-negocio-des"
 SUBNET_NAME="sub-coenuvem-des"
 REGION="southamerica-east1"            # ajuste se a sub-rede for de outra região
 DATASET="asset_inventory"
-TABLE="inventory_resources"
+TABLE_RESOURCES="inventory_resources"
+TABLE_IAM="inventory_iam_policies"
 JOB_NAME="asset-export-job"
 RUNTIME_SA="sa-terraform@${PROJECT_ID}.iam.gserviceaccount.com"
 SCHEDULER_NAME="asset-export-weekly-trigger"
@@ -52,11 +53,16 @@ if [[ "${confirm}" != "s" && "${confirm}" != "S" ]]; then
   exit 1
 fi
 
+# Roda os dois exports (resource + iam-policy) numa única execução do Job.
+# Usamos "bash -c" com um comando único (sem vírgulas dentro dele, já que
+# --args do Cloud Run separa argumentos por vírgula).
+EXPORT_CMD="gcloud asset export --organization=${ORG_ID} --content-type=resource --bigquery-table=projects/${PROJECT_ID}/datasets/${DATASET}/tables/${TABLE_RESOURCES} --partition-key=request-time --output-bigquery-force && gcloud asset export --organization=${ORG_ID} --content-type=iam-policy --bigquery-table=projects/${PROJECT_ID}/datasets/${DATASET}/tables/${TABLE_IAM} --partition-key=request-time --output-bigquery-force"
+
 echo "Fazendo deploy do Cloud Run Job (sem build - imagem pública)..."
 gcloud run jobs deploy "${JOB_NAME}" \
   --image="${IMAGE}" \
-  --command="gcloud" \
-  --args="asset,export,--organization=${ORG_ID},--content-type=resource,--bigquery-table=projects/${PROJECT_ID}/datasets/${DATASET}/tables/${TABLE},--partition-key=request-time,--output-bigquery-force" \
+  --command="bash" \
+  --args="-c,${EXPORT_CMD}" \
   --region="${REGION}" \
   --project="${PROJECT_ID}" \
   --service-account="${RUNTIME_SA}" \
@@ -89,3 +95,9 @@ gcloud scheduler jobs create http "${SCHEDULER_NAME}" \
        --project="${PROJECT_ID}" \
        --location="${REGION}" \
        --schedule="${CRON_SCHEDULE}" \
+       --time-zone="${TIME_ZONE}" \
+       --uri="${RUN_JOB_URI}"
+
+echo ""
+echo "Pronto. Pra testar agora, sem esperar a segunda-feira:"
+echo "  gcloud run jobs execute ${JOB_NAME} --region=${REGION} --project=${PROJECT_ID}"
