@@ -32,6 +32,10 @@ gcloud billing accounts get-iam-policy BILLING_ACCOUNT_ID \
   --filter="bindings.members:$(gcloud config get-value account)" \
   --format="table(bindings.role)"
 
+  kubectl get pods -n arc-systems -l app.kubernetes.io/component=runner-scale-set-listener
+
+  kubectl logs -n arc-systems <nome-do-pod-listener-default> --tail=100
+
 # 3. Confirma qual projeto está vinculado a essa conta de billing
 gcloud billing projects list --billing-account=BILLING_ACCOUNT_ID
 
