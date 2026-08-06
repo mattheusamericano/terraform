@@ -83,20 +83,32 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
 RUN_JOB_URI="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}:run"
 
 echo "Agendando execução semanal (${CRON_SCHEDULE}, ${TIME_ZONE})..."
-gcloud scheduler jobs create http "${SCHEDULER_NAME}" \
-  --project="${PROJECT_ID}" \
-  --location="${REGION}" \
-  --schedule="${CRON_SCHEDULE}" \
-  --time-zone="${TIME_ZONE}" \
-  --uri="${RUN_JOB_URI}" \
-  --http-method=POST \
-  --oauth-service-account-email="${RUNTIME_SA}" \
-  || gcloud scheduler jobs update http "${SCHEDULER_NAME}" \
-       --project="${PROJECT_ID}" \
-       --location="${REGION}" \
-       --schedule="${CRON_SCHEDULE}" \
-       --time-zone="${TIME_ZONE}" \
-       --uri="${RUN_JOB_URI}"
+# Checagem explícita de existência, em vez de depender do "create || update"
+# por código de erro (isso é o que estava quebrando ao rodar o script de novo).
+if gcloud scheduler jobs describe "${SCHEDULER_NAME}" \
+     --project="${PROJECT_ID}" \
+     --location="${REGION}" \
+     >/dev/null 2>&1; then
+  echo "Trigger '${SCHEDULER_NAME}' já existe - atualizando..."
+  gcloud scheduler jobs update http "${SCHEDULER_NAME}" \
+    --project="${PROJECT_ID}" \
+    --location="${REGION}" \
+    --schedule="${CRON_SCHEDULE}" \
+    --time-zone="${TIME_ZONE}" \
+    --uri="${RUN_JOB_URI}" \
+    --http-method=POST \
+    --oauth-service-account-email="${RUNTIME_SA}"
+else
+  echo "Trigger '${SCHEDULER_NAME}' não existe ainda - criando..."
+  gcloud scheduler jobs create http "${SCHEDULER_NAME}" \
+    --project="${PROJECT_ID}" \
+    --location="${REGION}" \
+    --schedule="${CRON_SCHEDULE}" \
+    --time-zone="${TIME_ZONE}" \
+    --uri="${RUN_JOB_URI}" \
+    --http-method=POST \
+    --oauth-service-account-email="${RUNTIME_SA}"
+fi
 
 echo ""
 echo "Pronto. Pra testar agora, sem esperar a segunda-feira:"
