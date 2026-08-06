@@ -50,6 +50,7 @@ helm upgrade arc-runner-set-imgcustom-v1-gcp-nprod \
   --version 0.12.1 \
   oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
 
+kubectl logs -n arc-systems deploy/arc-gha-rs-controller --tail=200 | grep -i default
 
 
   kubectl logs -n arc-systems -l app.kubernetes.io/component=runner-scale-set-listener --tail=100
