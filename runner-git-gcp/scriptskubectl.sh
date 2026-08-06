@@ -21,6 +21,4 @@ helm uninstall arc-runner-set-imgcustom-v1-gcp-nprod -n arc-runners
 gcloud asset analyze-iam-policy \
   --organization=ORG_ID \
   --identity="serviceAccount:sa-gke-runner-des@prj-runner-services-des.iam.gserviceaccount.com" \
-  --format=json > analise.json
-
-jq -r '.mainAnalysis.analysisResults[] | [.attachedResourceFullName, .iamBinding.role] | @tsv' analise.json | sort -u
+  --format="table(mainAnalysis.analysisResults[].attachedResourceFullName, mainAnalysis.analysisResults[].iamBinding.role)"
