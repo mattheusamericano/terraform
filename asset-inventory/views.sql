@@ -169,3 +169,21 @@ SELECT
   update_time
 FROM `terraform-442218.asset_inventory.inventory_iam_policies`,
   UNNEST(iam_policy.bindings) AS binding,
+  UNNEST(binding.members) AS member
+QUALIFY ROW_NUMBER() OVER (
+  PARTITION BY name, binding.role, member ORDER BY update_time DESC
+) = 1;
+
+-- 7) (Opcional) Custo por recurso, se você também exportar Billing para BigQuery.
+-- Descomente e ajuste os nomes de tabela/coluna do seu billing export.
+--
+-- CREATE OR REPLACE VIEW `terraform-442218.asset_inventory.v_custo_por_recurso` AS
+-- SELECT
+--   inv.project_ancestor,
+--   inv.asset_type,
+--   b.sku.description AS sku,
+--   SUM(b.cost) AS custo_total
+-- FROM `terraform-442218.billing_export.gcp_billing_export_v1_XXXXXX` b
+-- JOIN `terraform-442218.asset_inventory.v_inventory_latest` inv
+--   ON b.project.id = REPLACE(inv.project_ancestor, 'projects/', '')
+-- GROUP BY 1, 2, 3;
