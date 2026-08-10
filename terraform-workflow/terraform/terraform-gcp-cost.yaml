@@ -1,0 +1,40 @@
+parameters:
+  gcpBillingKey: "gcp-billing-key.json"
+  bigqueryDataset: "cloud_billing_data"
+  bigqueryTable: "gcp_billing_export_resource_v1_XXXX"
+  gcpProject: "meu-projeto-gcp"
+
+pool:
+  -name: "AgentGCP"
+
+steps:
+  - task: DownloadSecureFile@1
+    name: downloadKey
+    inputs:
+      secureFile: ${{ parameters.gcpBillingKey }}
+
+  - script: |
+      echo "Instalando gcloud e BigQuery CLI"
+      curl https://sdk.cloud.google.com | bash
+      source $HOME/.bash_profile
+      gcloud auth activate-service-account --key-file=$(downloadKey.secureFilePath)
+      gcloud config set project ${{ parameters.gcpProject }}
+
+      echo "Consultando custos no BigQuery"
+      bq query --use_legacy_sql=false "
+        SELECT
+          project.id AS project_id,
+          service.description AS service,
+          sku.description AS sku,
+          cost,
+          usage_start_time
+        FROM
+          \`${{ parameters.gcpProject }}.${{ parameters.bigqueryDataset }}.${{ parameters.bigqueryTable }}\`
+        WHERE
+          usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+        ORDER BY
+          usage_start_time DESC
+        LIMIT 50
+      "
+    displayName: "Consultar custos GCP via BigQuery"
+# teste

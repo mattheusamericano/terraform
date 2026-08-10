@@ -1,0 +1,36 @@
+parameters:
+  - name: project_id
+    type: string
+
+  - name: sigla
+    type: string
+
+  - name: state_bucket
+    type: string
+
+  - name: region
+    type: string
+    default: "southamerica-east1"
+
+steps:
+  - script: |
+      BUCKET="gs://${{ parameters.state_bucket }}"
+
+      if gcloud storage buckets describe "${BUCKET}" > /dev/null 2>&1; then
+        echo "##[warning]Bucket ${BUCKET} já existe — pulando criação."
+      else
+        gcloud storage buckets create "${BUCKET}" \
+          --project="${{ parameters.project_id }}" \
+          --location="${{ parameters.region }}" \
+          --uniform-bucket-level-access
+        gcloud storage buckets update "${BUCKET}" --versioning
+      fi
+
+      for PASTA in "terraform/${{ parameters.sigla }}" "terraform/iam"; do
+        if gcloud storage ls "${BUCKET}/${PASTA}/" > /dev/null 2>&1; then
+          echo "##[warning]Pasta ${PASTA} já existe — pulando."
+        else
+          echo "" | gcloud storage cp - "${BUCKET}/${PASTA}/.keep"
+        fi
+      done
+    displayName: "Validate/Create Buckets"

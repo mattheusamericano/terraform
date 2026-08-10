@@ -1,0 +1,362 @@
+trigger: none
+
+parameters:
+  - name: gitHubOrg
+    type: string
+    values:
+      - caixagithub
+      - caixadepartamental
+      - CAIXASANDBOX
+  - name: local
+    type: string
+    values:
+      - prod
+      - nprod
+  - name: cloudProvider
+    type: string
+    values:
+      - aws
+      - az
+      - gcp
+    default: 'az'
+  - name: serviceConnection
+    type: string
+    default: ''
+
+jobs:
+  - job: deploy
+    pool:
+      ${{ if and(eq(parameters.cloudProvider, 'aws'), eq(parameters.local, 'prod') ) }}:
+        name: managed-devopspool-aws-prd
+      ${{ if and(eq(parameters.cloudProvider, 'aws'), eq(parameters.local, 'nprod') ) }}:
+        name: managed-devopspool-aws-nprd
+      ${{ if and(eq(parameters.cloudProvider, 'gcp'), eq(parameters.local, 'prod') ) }}:
+        name: managed-devopspool-gcp-prd
+      ${{ if and(eq(parameters.cloudProvider, 'gcp'), eq(parameters.local, 'nprod') ) }}:
+        name: managed-devopspool-gcp-nprd
+      ${{ if and(eq(parameters.cloudProvider, 'az'), eq(parameters.local, 'prod') ) }}:
+        name: managed-devopspool-prd
+      ${{ if and(eq(parameters.cloudProvider, 'az'), eq(parameters.local, 'nprod') ) }}:
+        name: managed-devopspool-nprd
+    displayName: 'Deploy ARC'
+    variables:
+      gitHubOrg: ${{ parameters.gitHubOrg }}
+      cloudProvider: ${{ parameters.cloudProvider }}
+      deploy_role_arn: 'arn:aws:iam::027574771582:role/aft-global-TerraformPipeline-Role'
+    steps:
+    - checkout: git://Suporte-IaC/arc-iac-settings@ft/gcp
+    - checkout: self
+
+    - task: replacetokens@5
+      displayName: "Change Variaveis"
+      inputs:
+        rootDirectory: '$(Build.SourcesDirectory)'
+        targetFiles: |
+          **/*.sh
+          **/*.yaml
+          **/*.yml
+        tokenPattern: 'rm'
+        encoding: 'auto'
+        writeBOM: false
+        actionOnMissing: 'warn'
+        keepToken: false
+        actionOnNoFiles: 'continue'
+        enableTransforms: false
+        enableRecursion: false
+        useLegacyPattern: false
+        enableTelemetry: true
+
+    - ${{ if eq(parameters['cloudProvider'], 'az') }}:
+      - task: AzureCLI@2
+        displayName: "Deploy ARC ${{ parameters.gitHubOrg }} - ${{ parameters.cloudProvider }} - ${{ parameters.local }}"
+        inputs:
+          azureSubscription: $(azServiceConnection)
+          scriptType: 'pscore'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            az aks install-cli --verbose
+            az aks get-credentials -g $(aksResourceGroup) -n $(aksClusterName) --overwrite-existing
+            kubelogin convert-kubeconfig --login azurecli
+            chmod +x $(Build.SourcesDirectory)/arc-iac-settings/deploy-runner-listerher-and-efemoro-pod.sh
+            if ('${{ parameters.local }}' -eq 'nprod' ){
+              echo "teste nprod"
+              bash $(Build.SourcesDirectory)/arc-iac-settings/deploy-runner-listerher-and-efemoro-pod.sh nprod all
+            }elseif('${{ parameters.local }}' -eq 'prod' ){
+              echo "teste prod"
+              bash $(Build.SourcesDirectory)/arc-iac-settings/deploy-runner-listerher-and-efemoro-pod.sh prod all
+            }
+            # Validação do Actions Runner Controller
+              Write-Host "=========================================="
+              Write-Host "  VALIDAÇÃO DO ACTIONS RUNNER CONTROLLER"
+              Write-Host "=========================================="
+              kubectl config get-contexts
+              sleep 120
+              # Verificar controller no namespace arc-systems
+              Write-Host " ️ VERIFICANDO CONTROLLER (arc-systems)"
+              Write-Host "------------------------------------------"
+              kubectl get deployments -n arc-systems -o wide
+              kubectl get pods -n arc-systems -o wide
+              # Verificar AutoScalingRunnerSets
+              Write-Host " ‍♂️ VERIFICANDO AUTOSCALINGRUNNERSETS (arc-runners)"
+              Write-Host "------------------------------------------"
+              kubectl get autoscalingrunnersets -n arc-runners -o wide
+              # Verificar EphemeralRunners
+              Write-Host "⚡ VERIFICANDO EPHEMERALRUNNERS (arc-runners)"
+              Write-Host "------------------------------------------"
+              kubectl get ephemeralrunners -n arc-runners -o wide
+              # Verificar pods efêmeros no namespace arc-runners
+              Write-Host " ‍♀️ VERIFICANDO PODS EFÊMEROS (arc-runners)"
+              Write-Host "------------------------------------------"
+              kubectl get pods -n arc-runners -o wide
+              # Verificar eventos recentes
+              Write-Host "  EVENTOS RECENTES"
+              Write-Host "------------------------------------------"
+              kubectl get events -n arc-systems --sort-by='.lastTimestamp' | Select-Object -Last 5
+              kubectl get events -n arc-runners --sort-by='.lastTimestamp' | Select-Object -Last 5
+              # Verificar todos os pods
+              Write-Host "  TODOS OS PODS"
+              Write-Host "------------------------------------------"
+              kubectl get pods -n arc-systems
+              kubectl get pods -n arc-runners
+              # Verificar logs do controller
+              Write-Host "  LOGS DO CONTROLLER (arc-gha-rs-controller)"
+              Write-Host "------------------------------------------"
+              kubectl logs -n arc-systems deploy/arc-gha-rs-controller
+              # Verificar logs do listerner
+              Write-Host "  LOGS DO LISTENER"
+              Write-Host "------------------------------------------"
+              kubectl logs -n arc-systems -l app.kubernetes.io/component=runner-scale-set-listener
+              Write-Host "✅ VALIDAÇÃO CONCLUÍDA"
+
+    - ${{ if eq(parameters.cloudProvider, 'aws') }}:
+        - task: AWSShellScript@1
+          displayName:  "Deploy ARC ${{ parameters.gitHubOrg }} - ${{ parameters.cloudProvider }} - ${{ parameters.local }}"
+          inputs:
+            awsCredentials: $(awsServiceConnection)
+            regionName: 'sa-east-1'
+            scriptType: 'inline'
+            inlineScript: |
+              echo "#AWS login via Service Connection"
+              aws sts get-caller-identity
+              echo "#Assuming role: $(deploy_role_arn)"
+              CREDS=$(aws sts assume-role \
+                --role-arn $(deploy_role_arn) \
+                --role-session-name DevOpsSession)
+              export AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r '.Credentials.AccessKeyId')
+              export AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r '.Credentials.SecretAccessKey')
+              export AWS_SESSION_TOKEN=$(echo $CREDS | jq -r '.Credentials.SessionToken')
+              aws sts get-caller-identity
+              echo "Atualizando kubeconfig"
+              aws eks update-kubeconfig --name $(eksClusterName) --region sa-east-1
+              echo "------------------------ Deploy in  $(eksClusterName) ------------------------"
+              chmod +x "$(Build.SourcesDirectory)/arc-iac-settings/deploy-runner-listerher-and-efemoro-pod.sh"
+              if [[ "${{ parameters.local }}" == "nprod" ]]; then
+                echo "teste nprod"
+                bash $(Build.SourcesDirectory)/arc-iac-settings/deploy-runner-listerher-and-efemoro-pod.sh nprod all
+              elif [[ "${{ parameters.local }}" == "prod" ]]; then
+                echo "teste prod"
+                bash $(Build.SourcesDirectory)/arc-iac-settings/deploy-runner-listerher-and-efemoro-pod.sh prod all
+              fi
+              # ================================
+              # Validação do Actions Runner Controller
+              # ================================
+              echo "=========================================="
+              echo "  VALIDAÇÃO DO ACTIONS RUNNER CONTROLLER"
+              echo "=========================================="
+
+              kubectl config get-contexts
+              sleep 120
+
+              echo "️ VERIFICANDO CONTROLLER (arc-systems)"
+              echo "------------------------------------------"
+              kubectl get deployments -n arc-systems -o wide
+              kubectl get pods -n arc-systems -o wide
+
+              echo "‍♂️ VERIFICANDO AUTOSCALINGRUNNERSETS (arc-runners)"
+              echo "------------------------------------------"
+              kubectl get autoscalingrunnersets -n arc-runners -o wide
+
+              echo "⚡ VERIFICANDO EPHEMERALRUNNERS (arc-runners)"
+              echo "------------------------------------------"
+              kubectl get ephemeralrunners -n arc-runners -o wide
+
+              echo "‍♀️ VERIFICANDO PODS EFÊMEROS (arc-runners)"
+              echo "------------------------------------------"
+              kubectl get pods -n arc-runners -o wide
+
+              echo "  EVENTOS RECENTES"
+              echo "------------------------------------------"
+              kubectl get events -n arc-systems --sort-by='.lastTimestamp' | tail -n 5
+              kubectl get events -n arc-runners --sort-by='.lastTimestamp' | tail -n 5
+
+              echo "  TODOS OS PODS"
+              echo "------------------------------------------"
+              kubectl get pods -n arc-systems
+              kubectl get pods -n arc-runners
+
+              echo "  LOGS DO CONTROLLER (arc-gha-rs-controller)"
+              echo "------------------------------------------"
+              kubectl logs -n arc-systems deploy/arc-gha-rs-controller || echo "⚠️ Não foi possível obter logs do controller"
+
+              echo "  LOGS DO LISTENER"
+              echo "------------------------------------------"
+              kubectl logs -n arc-systems -l app.kubernetes.io/component=runner-scale-set-listener || echo "⚠️ Não foi possível obter logs do listener"
+
+              echo "✅ VALIDAÇÃO CONCLUÍDA"
+
+    - ${{ if eq(parameters.cloudProvider, 'gcp') }}:
+        - task: GcpWifAuth@0
+          displayName: 'Auth Google Cloud (WIF)'
+          inputs:
+            connectedServiceId: ${{ parameters.serviceConnection }}
+
+        - task: Bash@3
+          displayName: 'GCP - Setup (gcloud/kubectl/helm)'
+          inputs:
+            targetType: 'inline'
+            script: |
+              if ! command -v gcloud >/dev/null 2>&1; then
+                echo "Instalando Google Cloud SDK..."
+                if [ -f /etc/debian_version ]; then
+                  sudo apt-get update -y
+                  sudo apt-get install -y apt-transport-https ca-certificates gnupg curl
+                  echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+                    | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list >/dev/null
+                  curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+                    | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+                  sudo apt-get update -y
+                  sudo apt-get install -y google-cloud-sdk
+                else
+                  echo "Sistema não-Debian. Instale 'gcloud' previamente no agente." >&2
+                  exit 1
+                fi
+              fi
+
+              echo "======= Ensure deps (curl/gpg/ca-certificates) ======="
+              sudo apt-get update -y
+              sudo apt-get install -y ca-certificates curl gnupg lsb-release
+
+              echo "======= Add Google Cloud APT repo (if missing) ======="
+              if ! grep -Rqs "packages.cloud.google.com/apt" /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null; then
+                sudo install -d -m 0755 /usr/share/keyrings
+                curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+                  | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+                echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+                  | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list >/dev/null
+              fi
+
+              echo "======= Install required packages ======="
+              sudo apt-get update -y
+              sudo apt-get install -y \
+                google-cloud-cli \
+                google-cloud-cli-gke-gcloud-auth-plugin \
+                kubectl
+
+              echo "======= Configure GKE auth plugin ======="
+              export USE_GKE_GCLOUD_AUTH_PLUGIN=True
+              echo 'export USE_GKE_GCLOUD_AUTH_PLUGIN=True' >> ~/.bashrc
+              command -v gke-gcloud-auth-plugin
+              gke-gcloud-auth-plugin --version
+
+              echo "======= Install Helm (if missing) ======="
+              if ! command -v helm >/dev/null 2>&1; then
+                echo "Instalando Helm..."
+                curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 -o get_helm.sh
+                chmod +x get_helm.sh
+                sudo ./get_helm.sh
+                rm -f get_helm.sh
+              fi
+              helm version
+
+        - task: Bash@3
+          displayName: 'GCP - Auth conta + credenciais do cluster'
+          env:
+            PROJECT_ID: $(project_id)
+            REGION: $(region)
+          inputs:
+            targetType: 'inline'
+            script: |
+              echo "==> GOOGLE_APPLICATION_CREDENTIALS = ${GOOGLE_APPLICATION_CREDENTIALS:-<vazia>}"
+              if [ -z "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
+                echo "ERRO: GOOGLE_APPLICATION_CREDENTIALS não definida pela task GcpWifAuth@0." >&2
+                echo "Verifique no log da task 'Auth Google Cloud (WIF)' qual variável ela realmente exporta." >&2
+                exit 1
+              fi
+
+              echo "==> Ativando conta gcloud a partir da credencial WIF"
+              gcloud auth login --cred-file="$GOOGLE_APPLICATION_CREDENTIALS" --quiet
+
+              echo "==> Diagnóstico"
+              gcloud auth list --filter=status:ACTIVE
+              gcloud config set project "$PROJECT_ID"
+              gcloud config set compute/region "$REGION" || true
+              gcloud config get-value project
+
+              echo "==> Obtendo credenciais do cluster GKE"
+              gcloud container clusters get-credentials $(gkeClusterName) --region southamerica-east1 --project $(project_id)
+
+              echo "==> Smoke test: cluster acessível?"
+              kubectl config current-context
+              kubectl get ns
+
+        - task: Bash@3
+          displayName: 'Deploy ARC ${{ parameters.gitHubOrg }} - ${{ parameters.cloudProvider }} - ${{ parameters.local }}'
+          inputs:
+            targetType: 'inline'
+            script: |
+              echo "------------------------ Deploy in  $(gkeClusterName) ------------------------"
+              chmod +x "$(Build.SourcesDirectory)/arc-iac-settings/deploy-runner-listerher-and-efemoro-pod.sh"
+              if [[ "${{ parameters.local }}" == "nprod" ]]; then
+                echo "teste nprod"
+                bash $(Build.SourcesDirectory)/arc-iac-settings/deploy-runner-listerher-and-efemoro-pod.sh nprod all "v2"
+              elif [[ "${{ parameters.local }}" == "prod" ]]; then
+                echo "teste prod"
+                bash $(Build.SourcesDirectory)/arc-iac-settings/deploy-runner-listerher-and-efemoro-pod.sh prod all "v2"
+              fi
+
+              # ================================
+              # Validação do Actions Runner Controller
+              # ================================
+              echo "=========================================="
+              echo "  VALIDAÇÃO DO ACTIONS RUNNER CONTROLLER"
+              echo "=========================================="
+
+              kubectl config get-contexts
+              sleep 120
+
+              echo "️ VERIFICANDO CONTROLLER (arc-systems)"
+              echo "------------------------------------------"
+              kubectl get deployments -n arc-systems -o wide
+              kubectl get pods -n arc-systems -o wide
+
+              echo "‍♂️ VERIFICANDO AUTOSCALINGRUNNERSETS (arc-runners)"
+              echo "------------------------------------------"
+              kubectl get autoscalingrunnersets -n arc-runners -o wide
+
+              echo "⚡ VERIFICANDO EPHEMERALRUNNERS (arc-runners)"
+              echo "------------------------------------------"
+              kubectl get ephemeralrunners -n arc-runners -o wide
+
+              echo "‍♀️ VERIFICANDO PODS EFÊMEROS (arc-runners)"
+              echo "------------------------------------------"
+              kubectl get pods -n arc-runners -o wide
+
+              echo "  EVENTOS RECENTES"
+              echo "------------------------------------------"
+              kubectl get events -n arc-systems --sort-by='.lastTimestamp' | tail -n 5
+              kubectl get events -n arc-runners --sort-by='.lastTimestamp' | tail -n 5
+
+              echo "  TODOS OS PODS"
+              echo "------------------------------------------"
+              kubectl get pods -n arc-systems
+              kubectl get pods -n arc-runners
+
+              echo "  LOGS DO CONTROLLER (arc-gha-rs-controller)"
+              echo "------------------------------------------"
+              kubectl logs -n arc-systems deploy/arc-gha-rs-controller || echo "⚠️ Não foi possível obter logs do controller"
+
+              echo "  LOGS DO LISTENER"
+              echo "------------------------------------------"
+              kubectl logs -n arc-systems -l app.kubernetes.io/component=runner-scale-set-listener || echo "⚠️ Não foi possível obter logs do listener"
+
+              echo "✅ VALIDAÇÃO CONCLUÍDA"

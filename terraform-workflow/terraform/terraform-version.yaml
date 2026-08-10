@@ -1,0 +1,79 @@
+
+parameters:
+  terraformVersion: '1.9.8'
+
+steps:
+- task: Bash@3
+  displayName: 'Install Terraform ${{ parameters.terraformVersion }} (robusto)'
+  inputs:
+    targetType: 'inline'
+    script: |
+      set -euo pipefail
+
+      TF_VERSION='${{ parameters.terraformVersion }}'
+      TOOLS_DIR="$(Agent.ToolsDirectory)/terraform"
+      ZIP_FILE="terraform_${TF_VERSION}_linux_amd64.zip"
+      BIN_PATH="$TOOLS_DIR/terraform"
+
+      echo "##[group]Preparando diretório"
+      rm -rf "$TOOLS_DIR"
+      mkdir -p "$TOOLS_DIR"
+      echo "##[endgroup]"
+
+      echo "##[group]Baixando Terraform ${TF_VERSION}"
+      URL="https://releases.hashicorp.com/terraform/${TF_VERSION}/${ZIP_FILE}"
+      echo "URL: $URL"
+      curl -L -o "$ZIP_FILE" "$URL" || wget -O "$ZIP_FILE" "$URL"
+      ls -lha "$ZIP_FILE"
+      echo "##[endgroup]"
+
+      echo "##[group]Verificando/instalando unzip"
+      if command -v unzip >/dev/null 2>&1; then
+        echo "unzip já presente."
+      else
+        echo "unzip não encontrado. Tentando instalar..."
+        # Tenta apt (Debian/Ubuntu)
+        if command -v apt-get >/dev/null 2>&1; then
+          sudo apt-get update -y
+          sudo apt-get install -y unzip
+        # Tenta yum/dnf (RHEL/CentOS/Fedora/Amazon)
+        elif command -v yum >/dev/null 2>&1; then
+          sudo yum install -y unzip
+        elif command -v dnf >/dev/null 2>&1; then
+          sudo dnf install -y unzip
+        # Tenta apk (Alpine)
+        elif command -v apk >/dev/null 2>&1; then
+          sudo apk add --no-cache unzip
+        else
+          echo "Gerenciador de pacotes não encontrado. Usando Python para extrair ZIP."
+          USE_PY_UNZIP=1
+        fi
+      fi
+      echo "##[endgroup]"
+
+      echo "##[group]Extraindo Terraform"
+      if [ "${USE_PY_UNZIP:-0}" = "1" ]; then
+        python3 - << 'PY'
+      import zipfile, sys
+      zf = zipfile.ZipFile('terraform_${TF_VERSION}_linux_amd64.zip')
+      zf.extractall('${TOOLS_DIR}')
+      PY
+            else
+              unzip -o "$ZIP_FILE" -d "$TOOLS_DIR"
+            fi
+            ls -lha "$TOOLS_DIR"
+            echo "##[endgroup]"
+
+            echo "##[group]Configurando PATH"
+            chmod +x "$BIN_PATH"
+            # Disponível para este step:
+            export PATH="$TOOLS_DIR:$PATH"
+            # Disponível para steps subsequentes no job:
+            echo "##vso[task.prependpath]$TOOLS_DIR"
+            echo "PATH final: $PATH"
+            echo "##[endgroup]"
+
+            echo "##[group]Versão do Terraform"
+            "$BIN_PATH" -version
+            echo "##[endgroup]"
+

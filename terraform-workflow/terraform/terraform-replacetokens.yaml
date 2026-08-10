@@ -1,0 +1,18 @@
+steps:
+  - task: replacetokens@5
+    displayName: "Replaces *.tf*"
+    inputs:
+      rootDirectory: "$(Build.Repository.Name)/stacks"
+      targetFiles: |
+        **/*.tfvars
+        **/*.tf
+      encoding: 'auto'
+      tokenPattern: 'rm'
+      writeBOM: true
+      actionOnMissing: 'warn'
+      keepToken: false
+      actionOnNoFiles: 'continue'
+      enableTransforms: false
+      enableRecursion: false
+      useLegacyPattern: false
+      enableTelemetry: true

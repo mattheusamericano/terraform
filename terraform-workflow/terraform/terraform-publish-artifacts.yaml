@@ -1,0 +1,19 @@
+steps:
+
+- task: ArchiveFiles@2
+  displayName: "Press Plan"
+  inputs:
+    rootFolderOrFile: "$(Build.Repository.Name)/stacks"
+    includeRootFolder: true
+    archiveType: 'tar'
+    archiveFile: '$(Build.ArtifactStagingDirectory)/tfplan-$(Build.BuildId).tar.gz'
+    replaceExistingArchive: true
+    verbose: true
+
+- task: PublishBuildArtifacts@1
+  displayName: "Publish Plan tar.gz"
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)/tfplan-$(Build.BuildId).tar.gz'
+    ArtifactName: 'tfplan'
+    publishLocation: 'Container'
+

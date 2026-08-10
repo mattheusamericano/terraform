@@ -1,0 +1,35 @@
+==> Diagnóstico (já autenticado via WIF)
+WARNING: The following filter keys were not present in any resource : status
+
+No credentialed accounts.
+
+To login, run:
+  $ gcloud auth login `ACCOUNT`
+
+Updated property [core/project].
+Updated property [compute/region].
+prj-runner-services-des
+Fetching cluster endpoint and auth data.
+kubeconfig entry generated for gke-runner-des.
+------------------------ Deploy in  gke-runner-des ------------------------
+teste nprod
+/mnt/vss/_work/6/s/arc-iac-settings/deploy-runner-listerher-and-efemoro-pod.sh: line 1: ﻿: command not found
+F0805 14:48:55.263513  187625 cred.go:150] print credential failed with error: failed to retrieve access token: failure while executing gcloud, with args [config config-helper --format=json]: exit status 1 (err: ERROR: (gcloud.config.config-helper) You do not currently have an active account selected.
+Please run:
+
+  $ gcloud auth login
+
+to obtain new credentials.
+
+If you have already logged in with a different account, run:
+
+  $ gcloud config set account ACCOUNT
+
+to select an already authenticated account to use.
+)
+Error: Kubernetes cluster unreachable: Get "https://34.95.211.151/version": getting credentials: exec: executable gke-gcloud-auth-plugin failed with exit code 1
+❌ Controller 'arc' não encontrado no namespace arc-systems
+⚠️ Controller não encontrado. Instalando...
+🎛️ Instalando/Atualizando Actions Runner Controller...
+F0805 14:48:55.899533  187647 cred.go:150] print credential failed with error: failed to retrieve access token: failure while executing gcloud, with args [config config-helper --format=json]: exit status 1 (err: ERROR: (gcloud.config.config-helper) You do not currently have an active account selected.
+Please run:

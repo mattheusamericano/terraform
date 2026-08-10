@@ -1,96 +1,76 @@
 #!/usr/bin/env bash
-# Empacota o export do Cloud Asset Inventory num Cloud Run Job e agenda
-# execução diária via Cloud Scheduler, para manter o inventário sempre atualizado.
+# Agenda o export do Cloud Asset Inventory 1x por semana usando
+# Cloud Scheduler -> Cloud Workflows. Sem VM, sem Cloud Build, sem container.
+#
+# (nome do arquivo ficou de versões anteriores que tentaram Cloud Run - o
+# conteúdo abaixo já foi trocado pra Workflows, que não depende da VM estar
+# ligada e não usa Cloud Build em nenhuma etapa)
 set -euo pipefail
 
 # ---- ajuste estas variáveis ----
-PROJECT_ID="meu-projeto"
-ORG_ID="123456789012"
-DATASET="asset_inventory"
+ORG_ID="61181892930"
+PROJECT_ID="terraform-442218"
 REGION="southamerica-east1"
-SA_NAME="asset-export-runner"
-JOB_NAME="asset-export-job"
-SCHEDULER_NAME="asset-export-daily"
+SA_NAME="asset-export-workflow"
+WORKFLOW_NAME="asset-export-weekly"
+SCHEDULER_NAME="asset-export-weekly-trigger"
+CRON_SCHEDULE="0 6 * * 1"   # toda segunda-feira às 06:00
+TIME_ZONE="America/Sao_Paulo"
+WORKFLOW_FILE="workflow_export_semanal.yaml"
 # ---------------------------------
 
 SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
-echo "Criando service account dedicada..."
+echo "Habilitando APIs necessárias (Workflows e Scheduler)..."
+gcloud services enable \
+  workflows.googleapis.com \
+  workflowexecutions.googleapis.com \
+  cloudscheduler.googleapis.com \
+  --project="${PROJECT_ID}"
+
+echo "Criando service account dedicada (se não existir)..."
 gcloud iam service-accounts create "${SA_NAME}" \
   --project="${PROJECT_ID}" \
-  --display-name="Executa export diário do Cloud Asset Inventory" || true
+  --display-name="Executa o Workflow de export semanal do Cloud Asset Inventory" || true
 
+echo "Concedendo cloudasset.viewer na organização (necessário pra chamar exportAssets)..."
 gcloud organizations add-iam-policy-binding "${ORG_ID}" \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="roles/cloudasset.viewer" \
   --condition=None
 
+echo "Concedendo workflows.invoker no projeto (necessário pro Cloud Scheduler disparar o Workflow)..."
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${SA_EMAIL}" \
-  --role="roles/bigquery.dataEditor"
+  --role="roles/workflows.invoker"
 
-gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-  --member="serviceAccount:${SA_EMAIL}" \
-  --role="roles/bigquery.jobUser"
-
-gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-  --member="serviceAccount:${SA_EMAIL}" \
-  --role="roles/run.invoker"
-
-# Build local mínimo: uma imagem com gcloud CLI que roda o export e sai.
-WORKDIR=$(mktemp -d)
-cat > "${WORKDIR}/Dockerfile" <<'EOF'
-FROM google/cloud-sdk:slim
-COPY run_export.sh /run_export.sh
-RUN chmod +x /run_export.sh
-ENTRYPOINT ["/run_export.sh"]
-EOF
-
-cat > "${WORKDIR}/run_export.sh" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-gcloud asset export \\
-  --organization="${ORG_ID}" \\
-  --content-type=resource \\
-  --bigquery-table="projects/${PROJECT_ID}/datasets/${DATASET}/tables/inventory_resources" \\
-  --partition-key=request-time \\
-  --output-bigquery-force
-
-gcloud asset export \\
-  --organization="${ORG_ID}" \\
-  --content-type=iam-policy \\
-  --bigquery-table="projects/${PROJECT_ID}/datasets/${DATASET}/tables/inventory_iam_policies" \\
-  --partition-key=request-time \\
-  --output-bigquery-force
-EOF
-
-IMAGE="gcr.io/${PROJECT_ID}/asset-export-job"
-echo "Buildando imagem ${IMAGE}..."
-gcloud builds submit "${WORKDIR}" --tag "${IMAGE}" --project="${PROJECT_ID}"
-
-echo "Criando/atualizando Cloud Run Job..."
-gcloud run jobs deploy "${JOB_NAME}" \
-  --image="${IMAGE}" \
-  --region="${REGION}" \
+echo "Fazendo deploy do Workflow (${WORKFLOW_FILE})..."
+gcloud workflows deploy "${WORKFLOW_NAME}" \
   --project="${PROJECT_ID}" \
-  --service-account="${SA_EMAIL}" \
-  --max-retries=1 \
-  --task-timeout=900s
+  --location="${REGION}" \
+  --source="${WORKFLOW_FILE}" \
+  --service-account="${SA_EMAIL}"
 
-echo "Agendando execução diária às 06:00 (America/Sao_Paulo)..."
+echo "Agendando execução semanal (${CRON_SCHEDULE}, ${TIME_ZONE})..."
+WORKFLOW_EXEC_URL="https://workflowexecutions.googleapis.com/v1/projects/${PROJECT_ID}/locations/${REGION}/workflows/${WORKFLOW_NAME}/executions"
+
 gcloud scheduler jobs create http "${SCHEDULER_NAME}" \
   --project="${PROJECT_ID}" \
   --location="${REGION}" \
-  --schedule="0 6 * * *" \
-  --time-zone="America/Sao_Paulo" \
-  --uri="https://${REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${PROJECT_ID}/jobs/${JOB_NAME}:run" \
+  --schedule="${CRON_SCHEDULE}" \
+  --time-zone="${TIME_ZONE}" \
+  --uri="${WORKFLOW_EXEC_URL}" \
   --http-method=POST \
   --oauth-service-account-email="${SA_EMAIL}" \
   || gcloud scheduler jobs update http "${SCHEDULER_NAME}" \
        --project="${PROJECT_ID}" \
        --location="${REGION}" \
-       --schedule="0 6 * * *" \
-       --time-zone="America/Sao_Paulo"
+       --schedule="${CRON_SCHEDULE}" \
+       --time-zone="${TIME_ZONE}"
 
-rm -rf "${WORKDIR}"
-echo "Pronto. O inventário será exportado todo dia às 06:00."
+echo ""
+echo "Pronto. O Workflow ${WORKFLOW_NAME} roda toda segunda-feira às 06:00,"
+echo "disparado pelo Cloud Scheduler, sem depender de nenhuma VM ligada."
+echo ""
+echo "Pra testar manualmente agora (sem esperar segunda-feira):"
+echo "  gcloud workflows run ${WORKFLOW_NAME} --project=${PROJECT_ID} --location=${REGION}"

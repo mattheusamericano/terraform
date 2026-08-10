@@ -1,0 +1,10 @@
+parameters:
+  Stack_Folder_Name: ''
+
+steps:
+- task: Bash@3
+  displayName: "Copy Stack Files"
+  inputs:
+    targetType: 'inline'
+    script: |
+      cp -rv tf-stacks-for-gcp/${{ parameters.Stack_Folder_Name }}/* $(Build.Repository.Name)

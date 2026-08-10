@@ -1,0 +1,85 @@
+# Workflow que dispara o export do Cloud Asset Inventory pro BigQuery e espera
+# a operação (assíncrona) terminar. Sem container, sem Cloud Build — é só este
+# YAML, feito upload direto via `gcloud workflows deploy`.
+#
+# Ajuste os valores de "assign" abaixo antes de subir (org, projeto, dataset, tabela).
+main:
+  steps:
+    - init:
+        assign:
+          - org_id: "61181892930"
+          - project_id: "terraform-442218"
+          - dataset: "asset_inventory"
+          - table: "inventory_resources"
+          - max_tentativas: 40   # 40 x 15s = 10 minutos de espera máxima
+          - tentativa: 0
+
+    - iniciar_export:
+        call: http.post
+        args:
+          url: ${"https://cloudasset.googleapis.com/v1/organizations/" + org_id + ":exportAssets"}
+          auth:
+            type: OAuth2
+          headers:
+            X-Goog-User-Project: ${project_id}
+          body:
+            contentType: "RESOURCE"
+            outputConfig:
+              bigqueryDestination:
+                dataset: ${"projects/" + project_id + "/datasets/" + dataset}
+                table: ${table}
+                force: true
+                partitionSpec:
+                  partitionKey: "REQUEST_TIME"
+        result: export_response
+
+    - extrair_operacao:
+        assign:
+          - operation_name: ${export_response.body.name}
+
+    # Loop de espera: cada sub-step aqui dentro é de UM tipo só (switch OU
+    # call OU assign), nunca misturado no mesmo step - foi isso que quebrou
+    # na versão anterior.
+    - loop_espera:
+        steps:
+          - checar_timeout:
+              switch:
+                - condition: ${tentativa >= max_tentativas}
+                  next: timeout
+          - esperar:
+              call: sys.sleep
+              args:
+                seconds: 15
+          - checar_status:
+              call: http.get
+              args:
+                url: ${"https://cloudasset.googleapis.com/v1/" + operation_name}
+                auth:
+                  type: OAuth2
+                headers:
+                  X-Goog-User-Project: ${project_id}
+              result: op_status
+          - incrementar:
+              assign:
+                - tentativa: ${tentativa + 1}
+          - verificar_conclusao:
+              switch:
+                - condition: ${"done" in op_status.body and op_status.body.done == true}
+                  next: verificar_erro
+          - repetir:
+              next: loop_espera
+
+    - verificar_erro:
+        switch:
+          - condition: ${"error" in op_status.body}
+            next: falhou
+        next: sucesso
+
+    - sucesso:
+        return: '${"Export concluido com sucesso: " + operation_name}'
+
+    - falhou:
+        raise: ${op_status.body.error}
+
+    - timeout:
+        raise: "Export nao concluiu dentro do tempo maximo de espera (10 min). Confira manualmente com gcloud asset operations describe."
