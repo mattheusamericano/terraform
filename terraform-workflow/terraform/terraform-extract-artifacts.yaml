@@ -1,0 +1,8 @@
+steps:
+- task: ExtractFiles@1
+  displayName: "Extract Plan"
+  inputs:
+    archiveFilePatterns: '$(Agent.BuildDirectory)/tfplan/tfplan-$(Build.BuildId).tar.gz'
+    destinationFolder: '$(Build.Repository.Name)'
+    cleanDestinationFolder: true
+    overwriteExistingFiles: true

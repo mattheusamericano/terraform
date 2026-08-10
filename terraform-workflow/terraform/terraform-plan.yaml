@@ -1,0 +1,98 @@
+parameters:
+  infracostApiKey: 'ico-rg8Br1uP1UXKa4oYNlXnvTm2A7k8zTWv'
+  TF_WORKSPACE: ''
+
+steps:
+
+- task: Bash@3
+  displayName: "terraform init"
+  inputs:
+    targetType: 'inline'
+    script: |
+      $(Agent.ToolsDirectory)/terraform/terraform -chdir="$(Build.Repository.Name)/stacks" init -upgrade -reconfigure
+
+###############################
+# INICIO DEBUG PROVIDERS GCP  #
+###############################
+
+- task: Bash@3
+  displayName: "terraform providers debug"
+  inputs:
+    targetType: 'inline'
+    script: |
+      echo "===== CURRENT DIRECTORY ====="
+      pwd
+
+      echo ""
+      echo "===== STACK DIRECTORY ====="
+      ls -la "$(Build.Repository.Name)/stacks"
+
+      echo ""
+      echo "===== TERRAFORM VERSION ====="
+      $(Agent.ToolsDirectory)/terraform/terraform version
+
+      echo ""
+      echo "===== TERRAFORM PROVIDERS ====="
+      $(Agent.ToolsDirectory)/terraform/terraform \
+        -chdir="$(Build.Repository.Name)/stacks" \
+        providers
+
+      echo ""
+      echo "===== TERRAFORM LOCK FILE ====="
+      cat "$(Build.Repository.Name)/stacks/.terraform.lock.hcl" || true
+
+###############################
+#   FIM DEBUG PROVIDERS GCP   #
+###############################
+
+- task: Bash@3
+  displayName: "terraform validate"
+  inputs:
+    targetType: 'inline'
+    script: |
+      $(Agent.ToolsDirectory)/terraform/terraform -chdir="$(Build.Repository.Name)/stacks" validate
+
+- task: Bash@3
+  displayName: "terraform plan"
+  inputs:
+    targetType: 'inline'
+    script: |
+      echo "# Terraform Select Workspace"
+
+      $(Agent.ToolsDirectory)/terraform/terraform -chdir="$(Build.Repository.Name)/stacks" workspace select ${{parameters.TF_WORKSPACE}} || \
+      $(Agent.ToolsDirectory)/terraform/terraform -chdir="$(Build.Repository.Name)/stacks" workspace new ${{parameters.TF_WORKSPACE}}
+
+      echo "# Terraform Plan"
+
+      $(Agent.ToolsDirectory)/terraform/terraform \
+        -chdir="$(Build.Repository.Name)/stacks" \
+        plan \
+        -var-file="./tfvars/terraform.tfvars" \
+        -out=terraform.tfplan
+
+- task: InfracostSetup@2
+  displayName: Infracost Setup
+  inputs:
+    apiKey: ${{parameters.infracostApiKey}}
+
+- task: Bash@3
+  displayName: Infracost ${{parameters.TF_WORKSPACE}}
+  inputs:
+    targetType: 'inline'
+    script: |
+      echo "# Converter Plan Binary to Json"
+
+      $(Agent.ToolsDirectory)/terraform/terraform \
+        -chdir="$(Build.Repository.Name)/stacks" \
+        show -json terraform.tfplan > "$(Build.Repository.Name)/stacks/terraform.tfplan.json"
+
+      echo "# Infracost Version"
+      infracost --version
+
+      echo "# Infracost Set BRL"
+      infracost configure set currency BRL
+
+      echo "# Infracost Show Cost"
+      infracost breakdown \
+        --show-skipped \
+        --path "$(Build.Repository.Name)/stacks/terraform.tfplan.json"

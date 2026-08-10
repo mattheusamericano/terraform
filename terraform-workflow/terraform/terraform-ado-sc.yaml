@@ -1,0 +1,8 @@
+parameters:
+  serviceConnection: ''
+
+steps:
+- task: GcpWifAuth@0
+  displayName: Auth Google Cloud
+  inputs:
+    connectedServiceId: ${{parameters.serviceConnection}} # Specify service connection to use

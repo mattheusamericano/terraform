@@ -1,0 +1,13 @@
+parameters: 
+  TF_WORKSPACE:  ''
+
+steps:
+- task: Bash@3
+  displayName: "terraform plan destroy"
+  inputs:
+    targetType: 'inline'
+    script: | 
+      $(Agent.ToolsDirectory)/terraform/terraform -chdir="$(Build.Repository.Name)/stacks" init -upgrade -reconfigure
+      $(Agent.ToolsDirectory)/terraform/terraform -chdir="$(Build.Repository.Name)/stacks" validate
+      $(Agent.ToolsDirectory)/terraform/terraform -chdir="$(Build.Repository.Name)/stacks" workspace select ${{parameters.TF_WORKSPACE}} || terraform -chdir="$(Build.Repository.Name)/stacks" workspace new ${{parameters.TF_WORKSPACE}}
+      $(Agent.ToolsDirectory)/terraform/terraform -chdir="$(Build.Repository.Name)/stacks" plan -destroy -var-file="./tfvars/terraform.tfvars" -out=terraform.tfplandestroy

@@ -1,0 +1,21 @@
+ variables:
+  # =============================================================================
+  # GENERAL CONFIGURATION
+  # =============================================================================
+  environment: "des"
+  project: "terraform-442218"
+  sigla: "tf"
+  region: southamerica-east1
+  GCP_serviceConnection_Des: GCP-TF-TESTE
+  
+  # =============================================================================
+  # TERRAFORM CONFIGURATION
+  # =============================================================================
+  state-bucket: bucket-terraform-des
+
+  # =============================================================================
+  # Grupos de Acesso
+  # =============================================================================
+  group_ml_engineer: G_GCP_RISCFAB_DTSC@corp.caixa.gov.br
+  group_data_scientist: G_GCP_RISCFAB_DTSC@corp.caixa.gov.br
+  group_data_engineer: G_GCP_RISCFAB_DTSC@corp.caixa.gov.br

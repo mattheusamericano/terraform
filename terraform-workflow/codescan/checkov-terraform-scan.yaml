@@ -1,0 +1,26 @@
+parameters:
+  workingDirectory: "$(System.DefaultWorkingDirectory)"
+
+steps:
+- task: Bash@3
+  displayName: "Checkov"
+  inputs:
+    workingDirectory: "${{ parameters.workingDirectory }}"
+    targetType: "inline"
+    script: |
+      pip3 install checkov --user
+      docker pull bridgecrew/checkov
+      docker run \
+        --volume $(pwd):/tf bridgecrew/checkov \
+        --directory /tf \
+        --output junitxml \
+        --soft-fail > "$(pwd)/CheckovReport.xml"
+
+- task: PublishTestResults@2
+  displayName: "Publish Checkov Results"
+  inputs:
+    testRunTitle: "Checkov Results"
+    failTaskOnFailedTests: false
+    testResultsFormat: "JUnit"
+    testResultsFiles: "CheckovReport.xml"
+    searchFolder: "${{ parameters.workingDirectory }}"

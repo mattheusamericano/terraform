@@ -1,0 +1,102 @@
+parameters: 
+  TF_WORKSPACE:  ''
+
+steps:
+
+
+- task: Bash@3
+  name: 'TerraformShow'
+  displayName: 'terraform show'
+  inputs:
+    targetType: 'inline'
+    script: |
+      set -euo pipefail
+      
+      # Set variables
+      TERRAFORM_DIR="$(Build.Repository.Name)/stacks"
+      PLAN_FILE="terraform.tfplan"
+      RAW_OUTPUT_FILE="$(Build.ArtifactStagingDirectory)/terraform-plan-raw.json"
+      API_OUTPUT_FILE="$(Build.ArtifactStagingDirectory)/terraform-plan-api.json"
+      
+      echo "##[section]Generating Terraform plan JSON for Azure DevOps API consumption"
+      echo "Working directory: $TERRAFORM_DIR"
+      echo "Plan file: $PLAN_FILE"
+      echo "API-ready output file: $API_OUTPUT_FILE"
+      
+      # Check if terraform plan file exists
+      if [ ! -f "$TERRAFORM_DIR/$PLAN_FILE" ]; then
+        echo "##[error]Terraform plan file not found: $TERRAFORM_DIR/$PLAN_FILE"
+        exit 1
+      fi
+      
+      # Generate raw JSON output
+      echo "##[section]Executing terraform show command"
+      $(Agent.ToolsDirectory)/terraform/terraform -chdir="$TERRAFORM_DIR" show -json "$PLAN_FILE" > "$RAW_OUTPUT_FILE"
+      
+      # Transform to Azure DevOps API-friendly format
+      echo "##[section]Transforming JSON for Azure DevOps API consumption"
+      jq --compact-output '{
+        "buildId": env.BUILD_BUILDID,
+        "buildNumber": env.BUILD_BUILDNUMBER,
+        "repository": env.BUILD_REPOSITORY_NAME,
+        "branch": env.BUILD_SOURCEBRANCH,
+        "commitId": env.BUILD_SOURCEVERSION,
+        "timestamp": now | strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "terraform": {
+          "version": .terraform_version,
+          "formatVersion": .format_version
+        },
+        "planSummary": {
+          "totalResources": (.resource_changes | length),
+          "resourcesToAdd": [.resource_changes[] | select(.change.actions[] == "create") | .address],
+          "resourcesToUpdate": [.resource_changes[] | select(.change.actions[] == "update") | .address],
+          "resourcesToDelete": [.resource_changes[] | select(.change.actions[] == "delete") | .address],
+          "resourcesToReplace": [.resource_changes[] | select(.change.actions[] == "delete" and .change.actions[] == "create") | .address]
+        },
+        "variables": .variables,
+        "resourceChanges": [.resource_changes[] | {
+          "address": .address,
+          "type": .type,
+          "name": .name,
+          "provider": .provider_name,
+          "actions": .change.actions,
+          "before": .change.before,
+          "after": .change.after
+        }],
+        "plannedValues": .planned_values,
+        "priorState": .prior_state
+      }' "$RAW_OUTPUT_FILE" > "$API_OUTPUT_FILE"
+      
+      # Verify JSON output is valid
+      echo "##[section]Validating API-ready JSON output"
+      if jq empty "$API_OUTPUT_FILE" 2>/dev/null; then
+        echo "##[section]✅ API-ready JSON output is valid"
+        echo "File size: $(stat -c%s "$API_OUTPUT_FILE") bytes"
+        
+        # Extract key metrics for API consumption
+        RESOURCES_TO_ADD=$(jq '.planSummary.resourcesToAdd | length' "$API_OUTPUT_FILE")
+        RESOURCES_TO_UPDATE=$(jq '.planSummary.resourcesToUpdate | length' "$API_OUTPUT_FILE")
+        RESOURCES_TO_DELETE=$(jq '.planSummary.resourcesToDelete | length' "$API_OUTPUT_FILE")
+        
+        
+      else
+        echo "##[error]❌ Generated JSON is invalid"
+        exit 1
+      fi
+      
+      # Display summary for Azure DevOps API
+      echo "##[section]Plan Summary for Azure DevOps API"
+      echo "Resources to add: $RESOURCES_TO_ADD"
+      echo "Resources to update: $RESOURCES_TO_UPDATE"
+      echo "Resources to delete: $RESOURCES_TO_DELETE"
+      echo "Build ID: $(Build.BuildId)"
+      echo "Repository: $(Build.Repository.Name)"
+      
+      # Output JSON structure for API documentation
+      echo "##[section]API JSON Structure Available"
+      jq -r 'keys[]' "$API_OUTPUT_FILE" | sed 's/^/- /'
+      
+      echo "##[section]✅ Terraform plan JSON ready for Azure DevOps API consumption"
+      echo "API output file: $API_OUTPUT_FILE"
+      cat $API_OUTPUT_FILE
+

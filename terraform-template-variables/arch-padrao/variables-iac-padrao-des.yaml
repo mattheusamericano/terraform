@@ -1,0 +1,133 @@
+variables:
+  # =============================================================================
+  # GENERAL CONFIGURATION
+  # =============================================================================
+  environment: "des"
+  project_id: "terraform-442218"
+  sigla: "tf"
+  region: southamerica-east1
+  name_vpc_shared: vpc-negocio-des
+  name_vpc_subnet: sub-coenuvem-des
+  GCP_serviceConnection_Des: GCP-TF-TESTE
+
+  # =============================================================================
+  # TERRAFORM CONFIGURATION
+  # =============================================================================
+  state-bucket: bucket-terraform-des
+
+  # =============================================================================
+  # WORKBENCH CONFIGURATION
+  # =============================================================================
+  workbench_machine_type: e2-standard-4
+  workbench_disk_size_gb: 100
+  workbench_disk_type: PD_BALANCED
+
+  # =============================================================================
+  # CLOUD SQL CONFIGURATION
+  # =============================================================================
+  sql_disk_size: 240
+  sql_disk_type: PD_SSD
+  #sql_disk_autoresize_limit: 350
+  sql_tier: db-custom-4-15360
+  sql_database_version: SQLSERVER_2022_ENTERPRISE
+  sql_group_users: G_GCP_RISCFAB_DTSC@corp.caixa.gov.br
+
+  # =============================================================================
+  # BIGQUERY CONFIGURATION
+  # =============================================================================
+  group_bq_dataset_writer: G_GCP_RISCPLD_DTSC@corp.caixa.gov.br
+
+  # =============================================================================
+  # FIRESTORE CONFIGURATION
+  # =============================================================================
+  firestore_group_writer: G_GCP_RISCADM_DTSC@corp.caixa.gov.br
+  firestore_type: FIRESTORE_NATIVE
+
+  # =============================================================================
+  # GKE CONFIGURATION
+  # =============================================================================
+  gke_machine_type: e2-standard-4
+  gke_disk_type: pd-ssd
+  gke_disk_size: 100
+  gke_min_node_count: 1
+  gke_max_node_count: 2
+  gke_system_min_node_count: 1
+  gke_system_max_node_count: 2
+  gke_system_machine_type: e2-standard-4
+
+  # =============================================================================
+  # AIRFLOW COMPOSER CONFIGURATION
+  # =============================================================================
+  composer_image_version: composer-3-airflow-2.9
+  composer_environment_size: ENVIRONMENT_SIZE_SMALL
+  composer_worker_cpu: 1
+  composer_worker_memory_gb: 2
+  composer_worker_storage_gb: 1
+  composer_worker_min_count: 1
+  composer_worker_max_count: 4
+  composer_scheduler_cpu: 1
+  composer_scheduler_memory_gb: 2 
+  composer_scheduler_storage_gb: 1
+  composer_scheduler_count: 1
+  composer_key_ring: airflowhsmNPRDring
+  composer_key_crypto: airflwNPRDSYMAES256hsm001
+
+  # =============================================================================
+  # COLAB RUNTIME CONFIGURATION
+  # =============================================================================
+  rt_machine_type: n1-standard-4
+  rt_disk_type: pd-balanced
+  rt_disk_size_gb: 100
+  rt_accelerator_type: NVIDIA_TESLA_T4
+  rt_accelerator_count: 1
+
+  # =============================================================================
+  # CLOUD RUN CONFIGURATION
+  # =============================================================================
+  cloud_run_image: "us-docker.pkg.dev/cloudrun/container/hello"
+  vpc_connector_name: connector1
+
+  # =============================================================================
+  # APACHE SPARK CLUSTER (DATAPROC) 
+  # =============================================================================
+  dataproc_master_machine_type: n4-standard-2
+  dataproc_master_disk_type: hyperdisk-balanced
+  dataproc_master_disk_size: 100
+  dataproc_master_num_instances: 1
+  dataproc_worker_machine_type: n4-standard-2
+  dataproc_worker_disk_type: hyperdisk-balanced
+  dataproc_worker_disk_size: 200
+  dataproc_worker_num_instances: 2
+  dataproc_image_version: 2.3-debian12
+
+  # =============================================================================
+  # APACHE SPARK SESSION TEMPLATE (DATAPROC) 
+  # =============================================================================
+  dataproc_ss_session_type: jupyter
+  dataproc_ss_runtime_version: 2.3
+  dataproc_ss_serviceaccount: sa-wb-01-tf-des@terraform.iam.gserviceaccount.com
+  
+  # =============================================================================
+  # CLOUD BUILD WORKERPOOL 
+  # =============================================================================
+  cb_machine_type: e2-standard-4
+  cb_disk_size_gb: 100
+
+  # =============================================================================
+  # DEVOPS CONFIGURATION
+  # =============================================================================
+  enabled_workbench: false
+  enabled_pubsub: false
+  enabled_bucket: false
+  enabled_dataform_repo: false
+  enabled_sql: false
+  enabled_bq_dataset: false
+  enabled_firestore: false
+  enabled_gke: false
+  enabled_wipool: false
+  enabled_airflow_composer: false
+  enabled_colab_rt_template: false
+  enabled_cloud_run: false
+  enabled_dataproc_cluster: false
+  enabled_dataproc_session_template: false
+  enabled_cloudbuild_worker_pool: false

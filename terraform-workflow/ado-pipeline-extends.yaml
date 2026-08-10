@@ -1,0 +1,326 @@
+###########################################
+#INPUTS FROM DEFAULT PIPES TO EXTENDS PIPE#
+###########################################
+parameters:
+- name: Stack
+  type: string
+
+- name: poolName
+  type: string
+  default: ''
+
+##################################
+#PIPELINES RESOURCES REPOSITORIES#
+##################################
+resources:
+  repositories:
+
+    - repository: ado-pipelines-templates
+      type: git
+      name: GCPprovider/ado-pipelines-templates
+      ref: refs/heads/main
+
+    - repository: tf-modules-for-gcp
+      type: git
+      name: GCPprovider/tf-modules-for-gcp
+      ref: refs/heads/main
+    
+    - repository: tf-stacks-for-gcp
+      type: git
+      name: Suporte-IaC/tf-stacks-for-gcp
+      ref: refs/heads/main
+
+#############################
+#STARTED MULTISTAGE PIPELINE#
+#############################
+stages:
+
+#############################
+#CODE TEST/ANALYSIS/SCANNING#
+#############################
+- stage: CodeScan
+  condition: and(succeeded(), in(variables['Build.Reason'], 'Manual'), eq(variables['SYSTEM.STAGEATTEMPT'], '1'), or(eq(variables['Build.SourceBranch'], 'refs/heads/nprd'), eq(variables['Build.SourceBranch'], 'refs/heads/des'), eq(variables['Build.SourceBranch'], 'refs/heads/sandbox'), eq(variables['Build.SourceBranch'], 'refs/heads/hmp'), eq(variables['Build.SourceBranch'], 'refs/heads/tqs'), eq(variables['Build.SourceBranch'], 'refs/heads/canary'), eq(variables['Build.SourceBranch'], 'refs/heads/pilot'), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/dr'), eq(variables['Build.SourceBranch'], 'refs/heads/dep'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-nprd'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-des'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-sandbox'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-hmp'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-tqs'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-canary'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-pilot'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-prd'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-dr'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-dep') ))    
+  displayName: 'Code Scan'
+  jobs:
+    - job: "CodeScan"
+      pool:
+        name: ${{ parameters.poolName }}
+      steps:
+      - checkout: self
+      - checkout: tf-modules-for-gcp
+      - checkout: tf-stacks-for-gcp
+      - template: codescan/checkov_terraform_scan.yaml@ado-pipelines-templates
+
+################
+#TERRAFORM PLAN#
+################
+- ${{ if or(eq(variables['Build.SourceBranch'], 'refs/heads/nprd'), eq(variables['Build.SourceBranch'], 'refs/heads/des'), eq(variables['Build.SourceBranch'], 'refs/heads/sandbox'), eq(variables['Build.SourceBranch'], 'refs/heads/hmp'), eq(variables['Build.SourceBranch'], 'refs/heads/tqs'), eq(variables['Build.SourceBranch'], 'refs/heads/canary'), eq(variables['Build.SourceBranch'], 'refs/heads/pilot'), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/dr'), eq(variables['Build.SourceBranch'], 'refs/heads/dep') ) }}:
+  - stage: TerraformPlan
+    dependsOn: CodeScan
+    condition: and(succeeded(), eq(variables['SYSTEM.STAGEATTEMPT'], '1'), or(eq(variables['Build.SourceBranch'], 'refs/heads/nprd'), eq(variables['Build.SourceBranch'], 'refs/heads/des'), eq(variables['Build.SourceBranch'], 'refs/heads/sandbox'), eq(variables['Build.SourceBranch'], 'refs/heads/hmp'), eq(variables['Build.SourceBranch'], 'refs/heads/tqs'), eq(variables['Build.SourceBranch'], 'refs/heads/canary'), eq(variables['Build.SourceBranch'], 'refs/heads/pilot'), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/dr'), eq(variables['Build.SourceBranch'], 'refs/heads/dep') ) )
+    displayName: 'Plan'
+    jobs:
+    - job: TerraformPlan
+      pool:
+        name: ${{ parameters.poolName }}
+      steps:
+      - checkout: self
+      - checkout: tf-modules-for-gcp
+      - checkout: tf-stacks-for-gcp
+      - template: terraform/terraform_copy_artifacts.yaml@ado-pipelines-templates
+        parameters:
+          Stack_Folder_Name: ${{ parameters.Stack }}
+      - template: terraform/terraform-ado-sc.yaml@ado-pipelines-templates
+        parameters:
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/dep') }}:
+            serviceConnection: $(GCP_serviceConnection_Dep)
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/dr') }}:
+            serviceConnection: $(GCP_serviceConnection_Dr)
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/main') }}:
+            serviceConnection: $(GCP_serviceConnection_Prd)
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/pilot') }}:
+            serviceConnection: $(GCP_serviceConnection_Pilot)
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/canary') }}:
+            serviceConnection: $(GCP_serviceConnection_Canary)
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/nprd') }}:
+            serviceConnection: $(GCP_serviceConnection_Nprd)
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/tqs') }}:
+            serviceConnection: $(GCP_serviceConnection_Tqs)
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/hmp') }}:
+            serviceConnection: $(GCP_serviceConnection_Hmp)
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/sandbox') }}:
+            serviceConnection: $(GCP_serviceConnection_Sandbox)
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/des') }}:
+            serviceConnection: $(GCP_serviceConnection_Des)
+      - template: terraform/terraform_replacetokens.yaml@ado-pipelines-templates
+      - template: scripts/bucket-tfstate-gcp.yaml@ado-pipelines-templates
+        parameters:
+          project_id: $(project_id)
+          sigla: $(sigla)
+          state_bucket: $(state-bucket)
+          region: $(region)
+      - template: terraform/terraform_version.yaml@ado-pipelines-templates
+      - template: terraform/terraform_plan.yaml@ado-pipelines-templates
+        parameters:
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/dep') }}:
+            TF_WORKSPACE: "dep"
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/dr') }}:
+            TF_WORKSPACE: "dr"
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/main') }}:
+            TF_WORKSPACE: "prd"
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/pilot') }}:
+            TF_WORKSPACE: "pilot"
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/canary') }}:
+            TF_WORKSPACE: "canary"
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/nprd') }}:
+            TF_WORKSPACE: "nprd"
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/tqs') }}:
+            TF_WORKSPACE: "tqs"
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/hmp') }}:
+            TF_WORKSPACE: "hmp"
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/sandbox') }}:
+            TF_WORKSPACE: "sandbox"
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/des') }}:
+            TF_WORKSPACE: "des"
+      - template: terraform/terraform_publish_artifacts.yaml@ado-pipelines-templates
+
+#################
+#TERRAFORM APPLY#
+#################
+- ${{ if or(eq(variables['Build.SourceBranch'], 'refs/heads/nprd'), eq(variables['Build.SourceBranch'], 'refs/heads/des'), eq(variables['Build.SourceBranch'], 'refs/heads/sandbox'), eq(variables['Build.SourceBranch'], 'refs/heads/hmp'), eq(variables['Build.SourceBranch'], 'refs/heads/tqs'), eq(variables['Build.SourceBranch'], 'refs/heads/canary'), eq(variables['Build.SourceBranch'], 'refs/heads/pilot'), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/dr'),  eq(variables['Build.SourceBranch'], 'refs/heads/dep')) }}:
+  - stage: TerraformApply
+    dependsOn: TerraformPlan
+    condition: and(succeeded(), eq(variables['SYSTEM.STAGEATTEMPT'], '1') )
+    displayName: 'Apply'
+    jobs:
+    - deployment: 'TerraformApply'
+      pool:
+        name: ${{ parameters.poolName }}
+      condition: succeeded()
+      environment: "iac-tf-apply"
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - checkout: self
+            - checkout: tf-modules-for-gcp
+            - checkout: tf-stacks-for-gcp
+            - template: terraform/terraform_extract_artifacts.yaml@ado-pipelines-templates
+            - template: terraform/terraform-ado-sc.yaml@ado-pipelines-templates
+              parameters:
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/dep') }}:
+                  serviceConnection: $(GCP_serviceConnection_Dep)
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/dr') }}:
+                  serviceConnection: $(GCP_serviceConnection_Dr)
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/main') }}:
+                  serviceConnection: $(GCP_serviceConnection_Prd)
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/pilot') }}:
+                  serviceConnection: $(GCP_serviceConnection_Pilot)
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/canary') }}:
+                  serviceConnection: $(GCP_serviceConnection_Canary)
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/nprd') }}:
+                  serviceConnection: $(GCP_serviceConnection_Nprd)
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/tqs') }}:
+                  serviceConnection: $(GCP_serviceConnection_Tqs)
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/hmp') }}:
+                  serviceConnection: $(GCP_serviceConnection_Hmp)
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/sandbox') }}:
+                  serviceConnection: $(GCP_serviceConnection_Sandbox)
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/des') }}:
+                  serviceConnection: $(GCP_serviceConnection_Des)
+            - template: terraform/terraform_version.yaml@ado-pipelines-templates
+            - template: terraform/terraform_apply.yaml@ado-pipelines-templates
+              parameters:
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/dep') }}:
+                  TF_WORKSPACE: "dep"
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/dr') }}:
+                  TF_WORKSPACE: "dr"
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/main') }}:
+                  TF_WORKSPACE: "prd"
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/pilot') }}:
+                  TF_WORKSPACE: "pilot"
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/canary') }}:
+                  TF_WORKSPACE: "canary"
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/nprd') }}:
+                  TF_WORKSPACE: "nprd"
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/tqs') }}:
+                  TF_WORKSPACE: "tqs"
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/hmp') }}:
+                  TF_WORKSPACE: "hmp"
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/sandbox') }}:
+                  TF_WORKSPACE: "sandbox"
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/des') }}:
+                  TF_WORKSPACE: "des"
+#---
+
+########################
+#TERRAFORM PLAN DESTROY#
+########################
+- ${{ if or(eq(variables['Build.SourceBranch'], 'refs/heads/destroy-nprd'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-des'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-sandbox'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-hmp'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-tqs'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-canary'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-pilot'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-prd'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-dr'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-dep') ) }}:
+  - stage: TerraformPlanDestroy
+    dependsOn: CodeScan
+    condition: and(succeeded(), eq(variables['SYSTEM.STAGEATTEMPT'], '1'), or(eq(variables['Build.SourceBranch'], 'refs/heads/destroy-nprd'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-des'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-sandbox'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-hmp'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-tqs'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-canary'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-pilot'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-prd'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-dep') ))
+    displayName: 'Plan Destroy'
+    jobs:
+    - job: TerraformPlanDestroy
+      pool:
+        name: ${{ parameters.poolName }}
+      steps:
+      - checkout: self
+      - checkout: tf-modules-for-gcp
+      - checkout: tf-stacks-for-gcp
+      - template: terraform/terraform_copy_artifacts.yaml@ado-pipelines-templates
+        parameters:
+          Stack_Folder_Name: ${{ parameters.Stack }}
+      - template: terraform/terraform-ado-sc.yaml@ado-pipelines-templates
+        parameters:
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-dep') }}:
+            serviceConnection: $(GCP_serviceConnection_Dep)
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-dr') }}:
+            serviceConnection: $(GCP_serviceConnection_Dr)
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-main') }}:
+            serviceConnection: $(GCP_serviceConnection_Prd)
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-pilot') }}:
+            serviceConnection: $(GCP_serviceConnection_Pilot)
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-canary') }}:
+            serviceConnection: $(GCP_serviceConnection_Canary)
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-nprd') }}:
+            serviceConnection: $(GCP_serviceConnection_Nprd)
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-tqs') }}:
+            serviceConnection: $(GCP_serviceConnection_Tqs)
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-hmp') }}:
+            serviceConnection: $(GCP_serviceConnection_Hmp)
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-sandbox') }}:
+            serviceConnection: $(GCP_serviceConnection_Sandbox)
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-des') }}:
+            serviceConnection: $(GCP_serviceConnection_Des)
+      - template: terraform/terraform_replacetokens.yaml@ado-pipelines-templates
+      - template: terraform/terraform_version.yaml@ado-pipelines-templates
+      - template: terraform/terraform_plan_destroy.yaml@ado-pipelines-templates
+        parameters:
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-dep') }}:
+            TF_WORKSPACE: "dep"
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-dr') }}:
+            TF_WORKSPACE: "dr"
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-prd') }}:
+            TF_WORKSPACE: "prd"
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-pilot') }}:
+            TF_WORKSPACE: "pilot"
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-canary') }}:
+            TF_WORKSPACE: "canary"
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-nprd') }}:
+            TF_WORKSPACE: "nprd"  
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-tqs') }}:
+            TF_WORKSPACE: "tqs"  
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-hmp') }}:
+            TF_WORKSPACE: "hmp"
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-sandbox') }}:
+            TF_WORKSPACE: "sandbox"
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-des') }}:
+            TF_WORKSPACE: "des"
+      - template: terraform/terraform_publish_artifacts.yaml@ado-pipelines-templates
+
+#########################
+#TERRAFORM APPLY DESTROY#
+#########################
+- ${{ if or(eq(variables['Build.SourceBranch'], 'refs/heads/destroy-nprd'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-des'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-sandbox'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-hmp'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-tqs'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-canary'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-pilot'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-prd'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-dr'), eq(variables['Build.SourceBranch'], 'refs/heads/destroy-dep') ) }}:
+  - stage: TerraformDestroy
+    dependsOn: TerraformPlanDestroy
+    condition: and(succeeded(), eq(variables['SYSTEM.STAGEATTEMPT'], '1') )
+    displayName: 'Apply Destroy'
+    jobs:
+    - deployment: 'TerraformDestroy'
+      pool:
+        name: ${{ parameters.poolName }}
+      condition: succeeded()
+      environment: "iac-tf-destroy"
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - template: terraform/terraform_extract_artifacts.yaml@ado-pipelines-templates
+            - template: terraform/terraform-ado-sc.yaml@ado-pipelines-templates
+              parameters:
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-dep') }}:
+                  serviceConnection: $(GCP_serviceConnection_Dep)
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-dr') }}:
+                  serviceConnection: $(GCP_serviceConnection_Dr)
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-main') }}:
+                  serviceConnection: $(GCP_serviceConnection_Prd)
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-pilot') }}:
+                  serviceConnection: $(GCP_serviceConnection_Pilot)
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-canary') }}:
+                  serviceConnection: $(GCP_serviceConnection_Canary)
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-nprd') }}:
+                  serviceConnection: $(GCP_serviceConnection_Nprd)
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-tqs') }}:
+                  serviceConnection: $(GCP_serviceConnection_Tqs)
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-hmp') }}:
+                  serviceConnection: $(GCP_serviceConnection_Hmp)
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-sandbox') }}:
+                  serviceConnection: $(GCP_serviceConnection_Sandbox)
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-des') }}:
+                  serviceConnection: $(GCP_serviceConnection_Des)
+            - template: terraform/terraform_version.yaml@ado-pipelines-templates
+            - template: terraform/terraform_destroy.yaml@ado-pipelines-templates
+              parameters:
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-dep') }}:
+                  TF_WORKSPACE: "dep"
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-dr') }}:
+                  TF_WORKSPACE: "dr"
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-prd') }}:
+                  TF_WORKSPACE: "prd"
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-pilot') }}:
+                  TF_WORKSPACE: "pilot"
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-canary') }}:
+                  TF_WORKSPACE: "canary"
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-nprd') }}:
+                  TF_WORKSPACE: "nprd"  
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-tqs') }}:
+                  TF_WORKSPACE: "tqs"  
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-hmp') }}:
+                  TF_WORKSPACE: "hmp"
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-sandbox') }}:
+                  TF_WORKSPACE: "sandbox"
+                ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/destroy-des') }}:
+                  TF_WORKSPACE: "des" 
