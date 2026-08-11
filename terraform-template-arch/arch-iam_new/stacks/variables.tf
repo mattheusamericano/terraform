@@ -7,11 +7,13 @@ variable "project_id" {
 
 #
 # SERVICE_ACCOUNT
+# Mesmo formato de var.sa_settings do módulo service_account (../../tf-modules-for-gcp/service_account) —
+# este stack não cria SA por conta própria, apenas repassa para aquele módulo.
 #
 variable "sa_settings" {
   type = map(object({
+    project_id   = string
     display_name = string
-    sigla        = string
   }))
 }
 

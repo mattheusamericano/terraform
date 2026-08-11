@@ -10,8 +10,8 @@ locals {
 
   #
   # Roles concedidas às Service Accounts internas (sempre aditivo).
-  # Chaves de sa_role_bindings viram o nome do resource individual — mantidas
-  # descritivas para facilitar leitura de plan/apply.
+  # As SAs em si são criadas pelo módulo service_account (module.service_account),
+  # não por este stack nem pelo módulo iam_new — ver main.tf.
   #
   permissions_sa_global = {
     permissao_service_agent_composer = "roles/composer.ServiceAgentV2Ext"
@@ -32,17 +32,42 @@ locals {
     composer_storage               = "roles/storage.admin"
   }
 
-  #
   # Roles pontuais concedidas às demais Service Accounts internas (substituem
   # os resources fixos que existiam em roles.tf no módulo antigo).
-  #
-  permissions_sa_pontuais = {
-    core_secret_accessor = { sa_key = "sa-cr-acc", role = "roles/secretmanager.secretAccessor" }
-    log_viewer_accessor  = { sa_key = "sa-lg-vw", role = "roles/logging.viewer" }
-    log_writer_accessor  = { sa_key = "sa-lg-wr", role = "roles/logging.logWriter" }
-    log_writer_bq_editor = { sa_key = "sa-lg-wr", role = "roles/bigquery.dataEditor" }
-    log_admin_accessor   = { sa_key = "sa-lg-adm", role = "roles/logging.admin" }
-  }
+  sa_role_iam_bindings = merge(
+    { for k, role in local.permissions_sa_global : "global-${k}" => {
+      role    = role
+      members = ["serviceAccount:${module.service_account.service_account_emails["sa-global"]}"]
+      }
+    },
+    { for k, role in local.permissions_sa_composer : "composer-${k}" => {
+      role    = role
+      members = ["serviceAccount:${module.service_account.service_account_emails["sa-comp"]}"]
+      }
+    },
+    {
+      core_secret_accessor = {
+        role    = "roles/secretmanager.secretAccessor"
+        members = ["serviceAccount:${module.service_account.service_account_emails["sa-cr-acc"]}"]
+      }
+      log_viewer_accessor = {
+        role    = "roles/logging.viewer"
+        members = ["serviceAccount:${module.service_account.service_account_emails["sa-lg-vw"]}"]
+      }
+      log_writer_accessor = {
+        role    = "roles/logging.logWriter"
+        members = ["serviceAccount:${module.service_account.service_account_emails["sa-lg-wr"]}"]
+      }
+      log_writer_bq_editor = {
+        role    = "roles/bigquery.dataEditor"
+        members = ["serviceAccount:${module.service_account.service_account_emails["sa-lg-wr"]}"]
+      }
+      log_admin_accessor = {
+        role    = "roles/logging.admin"
+        members = ["serviceAccount:${module.service_account.service_account_emails["sa-lg-adm"]}"]
+      }
+    },
+  )
 
   #
   # Grants para os grupos organizacionais (ML Engineer / Data Scientist / Data Engineer).

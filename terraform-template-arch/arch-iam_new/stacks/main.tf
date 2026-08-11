@@ -1,11 +1,20 @@
 #
+# SERVICE ACCOUNTS
+# Este stack não cria SA diretamente — delega para o módulo genérico já usado
+# pelos demais módulos de recurso do repositório.
+#
+module "service_account" {
+  source = "../../tf-modules-for-gcp/service_account"
+
+  sa_settings = var.sa_settings
+}
+
+#
 # IAM
 #
 module "iam" {
   source     = "../../tf-modules-for-gcp/iam_new"
   project_id = var.project_id
-
-  sa_settings = var.sa_settings
 
   custom_roles = {
     # Criadas mas não vinculadas a nenhum membro dentro deste stack — igual ao
@@ -44,14 +53,12 @@ module "iam" {
     }
   }
 
-  sa_role_bindings = merge(
-    { for k, role in local.permissions_sa_global : "global-${k}" => { sa_key = "sa-global", role = role } },
-    { for k, role in local.permissions_sa_composer : "composer-${k}" => { sa_key = "sa-comp", role = role } },
-    local.permissions_sa_pontuais,
+  # Une os grants das Service Accounts internas, os grants dos grupos de ML/Dados
+  # e quaisquer grants extras definidos explicitamente por ambiente (ex.: o grupo
+  # que antes vinha hardcoded no módulo antigo — ver variable "extra_group_role_bindings").
+  iam_bindings = merge(
+    local.sa_role_iam_bindings,
+    local.group_role_bindings,
+    var.extra_group_role_bindings,
   )
-
-  # Une os grants dos grupos de ML/Dados com quaisquer grants extras definidos
-  # explicitamente por ambiente (ex.: o grupo que antes vinha hardcoded no
-  # módulo antigo — ver variable "extra_group_role_bindings").
-  iam_bindings = merge(local.group_role_bindings, var.extra_group_role_bindings)
 }
