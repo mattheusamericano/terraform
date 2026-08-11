@@ -36,7 +36,7 @@ fi
 echo "VM encontrada na zona: ${ZONE}"
 
 echo "Montando o startup-script..."
-cat > startup_script_export.sh <<EOF
+cat > startup_script_export.sh <<STARTUPEOF
 #!/usr/bin/env bash
 # Roda toda vez que a VM liga. Executa os exports e desliga a VM no final,
 # então não fica cobrando nem ocupando recurso à toa.
@@ -53,7 +53,7 @@ gcloud asset export --organization=${ORG_ID} --content-type=iam-policy \\
 # Desliga a própria VM ao terminar (comportamento padrão do GCE: shutdown
 # dentro do guest OS já para a instância de verdade, sem custo de cobrança).
 shutdown -h now
-EOF
+STARTUPEOF
 
 echo "Anexando o startup-script na VM..."
 gcloud compute instances add-metadata "${VM_NAME}" \
