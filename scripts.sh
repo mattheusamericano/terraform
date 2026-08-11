@@ -1,45 +1,46 @@
 #!/usr/bin/env bash
-# Cria a zona DNS privada que faltava: resolve *.googleapis.com pro VIP
-# restrito (199.36.153.4-7), que é o caminho 100% privado exigido dentro
-# de um perímetro VPC Service Controls. Sem isso, o tráfego resolve pro
-# IP público normal do Google mesmo com Private Google Access ligado.
-#
-# Precisa de permissão de DNS Admin no projeto host da Shared VPC
-# (prj-network-services-des-cef) - se não tiver, manda esse script pro
-# time de redes rodar.
+# Job temporário só pra diagnosticar o INVALID_ARGUMENT do asset-export-job.
+# Mesma config de rede do Job real, mas roda só o export de resource com
+# --verbosity=debug, pra capturar a requisição/resposta HTTP completa que o
+# gcloud faz por baixo dos panos - o stderr "normal" não mostra isso.
 set -euo pipefail
 
+ORG_ID="61181892930"
+PROJECT_ID="terraform-442218"
 HOST_PROJECT_ID="prj-network-services-des-cef"
 NETWORK_NAME="vpc-negocio-des"
-ZONE_NAME="restricted-googleapis"
+SUBNET_NAME="sub-coenuvem-des"
+REGION="southamerica-east1"
+DATASET="asset_inventory"
+TABLE_RESOURCES="inventory_resources"
+RUNTIME_SA="sa-terraform@${PROJECT_ID}.iam.gserviceaccount.com"
+JOB_NAME="asset-export-debug"
+IMAGE="gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
 
-echo "Criando a zona DNS privada '${ZONE_NAME}' associada à VPC ${NETWORK_NAME}..."
-gcloud dns managed-zones create "${ZONE_NAME}" \
-  --project="${HOST_PROJECT_ID}" \
-  --description="Resolve *.googleapis.com para o VIP restrito (VPC-SC)" \
-  --dns-name="googleapis.com." \
-  --visibility=private \
-  --networks="${NETWORK_NAME}"
+# tail -c 4000 pra não estourar limite de log, mas mantendo o suficiente
+# pra ver a requisição e a resposta completa
+DEBUG_CMD="gcloud asset export --organization=${ORG_ID} --content-type=resource --bigquery-table=projects/${PROJECT_ID}/datasets/${DATASET}/tables/${TABLE_RESOURCES} --partition-key=request-time --output-bigquery-force --verbosity=debug 2>&1 | tail -c 4000"
 
-echo "Criando o registro A raiz (googleapis.com -> VIP restrito)..."
-gcloud dns record-sets create googleapis.com. \
-  --project="${HOST_PROJECT_ID}" \
-  --zone="${ZONE_NAME}" \
-  --type=A \
-  --ttl=300 \
-  --rrdatas=199.36.153.4,199.36.153.5,199.36.153.6,199.36.153.7
+echo "Fazendo deploy do Job de debug..."
+gcloud run jobs deploy "${JOB_NAME}" \
+  --image="${IMAGE}" \
+  --command="bash" \
+  --args="-c,${DEBUG_CMD}" \
+  --region="${REGION}" \
+  --project="${PROJECT_ID}" \
+  --service-account="${RUNTIME_SA}" \
+  --network="projects/${HOST_PROJECT_ID}/global/networks/${NETWORK_NAME}" \
+  --subnet="projects/${HOST_PROJECT_ID}/regions/${REGION}/subnetworks/${SUBNET_NAME}" \
+  --vpc-egress=all-traffic \
+  --max-retries=0 \
+  --task-timeout=300s
 
-echo "Criando o registro CNAME wildcard (*.googleapis.com -> googleapis.com)..."
-gcloud dns record-sets create "*.googleapis.com." \
-  --project="${HOST_PROJECT_ID}" \
-  --zone="${ZONE_NAME}" \
-  --type=CNAME \
-  --ttl=300 \
-  --rrdatas="googleapis.com."
+echo "Executando e aguardando..."
+gcloud run jobs execute "${JOB_NAME}" \
+  --region="${REGION}" \
+  --project="${PROJECT_ID}" \
+  --wait
 
 echo ""
-echo "Pronto. Confirma com:"
-echo "  gcloud dns record-sets list --project=${HOST_PROJECT_ID} --zone=${ZONE_NAME}"
-echo ""
-echo "Depois disso, roda de novo o Job de debug (05_debug_verbosity.sh) pra ver"
-echo "se o INVALID_ARGUMENT some."
+echo "Pronto. Agora veja o log completo com:"
+echo "  gcloud logging read 'resource.type=cloud_run_job AND resource.labels.job_name=${JOB_NAME}' --project=${PROJECT_ID} --limit=200 --format='value(textPayload)' --order=asc"
