@@ -17,9 +17,10 @@ RUNTIME_SA="sa-terraform@${PROJECT_ID}.iam.gserviceaccount.com"
 JOB_NAME="asset-export-debug"
 IMAGE="gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
 
-# tail -c 4000 pra não estourar limite de log, mas mantendo o suficiente
-# pra ver a requisição e a resposta completa
-DEBUG_CMD="gcloud asset export --organization=${ORG_ID} --content-type=resource --bigquery-table=projects/${PROJECT_ID}/datasets/${DATASET}/tables/${TABLE_RESOURCES} --partition-key=request-time --output-bigquery-force --verbosity=debug 2>&1 | tail -c 4000"
+# --log-http é o que de fato despeja o corpo da requisição/resposta (o
+# --verbosity=debug sozinho só mostra os logs internos de conexão, sem body).
+# tail -c 8000 pra caber o JSON completo sem estourar limite de log.
+DEBUG_CMD="gcloud asset export --organization=${ORG_ID} --content-type=resource --bigquery-table=projects/${PROJECT_ID}/datasets/${DATASET}/tables/${TABLE_RESOURCES} --partition-key=request-time --output-bigquery-force --log-http --verbosity=debug 2>&1 | tail -c 8000"
 
 echo "Fazendo deploy do Job de debug..."
 gcloud run jobs deploy "${JOB_NAME}" \
