@@ -1,0 +1,70 @@
+Assunto: Situacao atual do modulo Terraform de IAM (provisionado em ~20 projetos GCP)
+
+Contexto
+
+O modulo terraform-code/gcp/iam e o responsavel por toda a governanca de IAM dos
+projetos de dados/ML na plataforma GCP. Ele e aplicado via um stack de arquitetura
+(arch-iam) que hoje esta provisionado em aproximadamente 20 projetos, todos
+consumindo a mesma versao do modulo. Qualquer caracteristica descrita abaixo -
+inclusive os pontos de atencao - esta replicada em todos esses projetos.
+
+O que o modulo cria, por projeto
+
+- 9 Service Accounts internas (ex.: SA global, SA do Composer, SA de acesso a
+  secrets, SAs de logging).
+- 5 custom roles de projeto (ENG_VIEWER, ENG_MLOPS, ENG_DADOS, CIENTISTA_DADOS, e
+  uma role para a SA do Dataform), cada uma com uma lista extensa de permissoes
+  granulares do GCP.
+- Concessoes de roles predefinidas e customizadas tanto para essas Service
+  Accounts quanto para 3 grupos organizacionais (ML Engineer, Data Scientist,
+  Data Engineer), usando google_project_iam_member (aditivo) e
+  google_project_iam_binding (autoritativo) misturados.
+
+Pontos de atencao identificados
+
+1. Roles amplas em nivel de projeto inteiro.
+   Varias concessoes usam roles predefinidas de escopo total do projeto -
+   roles/storage.admin, roles/bigquery.admin, roles/composer.admin,
+   roles/logging.admin - em vez de escopo por recurso (bucket/dataset
+   especifico). Isso esta concedido tanto a Service Accounts quanto aos grupos
+   organizacionais, e replicado em todos os ~20 projetos.
+
+2. Grupo externo fixo no codigo-fonte, com permissao administrativa.
+   O grupo G_GCP_RISCFAB_DTSC@corp.caixa.gov.br esta hardcoded (nao e uma
+   variavel) e recebe roles/aiplatform.admin e roles/iam.dataScientist em todo
+   projeto onde o modulo e aplicado - ou seja, esse grupo tem acesso
+   administrativo de ML em todos os ~20 projetos por construcao,
+   independentemente de qualquer decisao especifica por ambiente.
+
+3. Uso de binding autoritativo (google_project_iam_binding) para as custom
+   roles e para roles/notebooks.runner.
+   Esse tipo de recurso substitui toda a lista de membros da role a cada
+   apply - se alguem for adicionado a uma dessas roles fora do Terraform
+   (manualmente ou por outro processo), o proximo apply remove esse acesso sem
+   aviso. O restante das concessoes usa o tipo aditivo
+   (google_project_iam_member), entao o modulo mistura os dois comportamentos
+   sem um criterio documentado por resource.
+
+4. Custom roles com listas de permissoes muito extensas.
+   As 5 custom roles somam mais de 2.000 permissoes declaradas no total,
+   varias delas parecendo copias quase integrais de APIs inteiras do GCP (ex.:
+   a role de "ML Viewer" inclui ~460 permissoes). Nao ha evidencia no codigo
+   de que essas listas tenham passado por um exercicio de least privilege - e
+   provavel que excedam o que cada perfil realmente usa.
+
+5. Sem versionamento/ambiente isolado para mudanca de escopo.
+   Como as 20 instancias compartilham a mesma definicao de custom role e o
+   mesmo conjunto de bindings, qualquer alteracao de permissao (para mais ou
+   para menos) se propaga para todos os projetos no proximo apply de cada um -
+   nao ha como testar uma mudanca de escopo em um projeto isoladamente sem
+   versionar o modulo.
+
+Situacao do trabalho em andamento
+
+Ja existe uma proposta de reescrita (iam_new + arch-iam_new) que resolve os
+itens 2 e 3 (remove o grupo hardcoded do codigo, torna a concessao aditiva por
+padrao) e reorganiza o modulo para ser auditavel por configuracao declarativa
+em vez de codigo fixo - mas nao reduz nenhum escopo de permissao por conta
+propria (itens 1 e 4 continuam pendentes). Reduzir esse escopo exige
+levantamento, junto aos donos de cada perfil, do que e efetivamente usado em
+producao - ainda nao foi feito.
