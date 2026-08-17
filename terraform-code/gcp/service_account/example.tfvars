@@ -1,0 +1,31 @@
+sa_settings = {
+  "sa-app" = {
+    project_id   = "prj-app-des"
+    sigla        = "eng"
+    display_name = "Service Account da aplicação X"
+    description  = "Usada pela aplicação X para acessar Cloud SQL e Pub/Sub"
+
+    roles = [
+      "roles/cloudsql.client",
+      "roles/pubsub.publisher",
+    ]
+  }
+
+  "sa-etl" = {
+    project_id = "prj-app-des"
+    sigla      = "eng"
+    # display_name e description ficam com o default do módulo
+
+    roles = [
+      "roles/bigquery.jobUser",
+      "roles/bigquery.dataEditor",
+      "roles/storage.objectAdmin",
+    ]
+  }
+
+  "sa-readonly" = {
+    project_id = "prj-app-des"
+    sigla      = "eng"
+    # sem roles: só cria a identidade, sem nenhuma permissão de projeto
+  }
+}
