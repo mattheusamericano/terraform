@@ -1,8 +1,13 @@
-# Service Account Compose - 
+# Service Account genérica, padrão sa-<chave>-<sigla>-<workspace>
 resource "google_service_account" "sa" {
   for_each = var.sa_settings
 
-  account_id   = "${each.key}-${each.value.project_id}-${terraform.workspace}"
-  project      = each.value["project_id"]
-  display_name = each.value["display_name"]
+  project      = each.value.project_id
+  account_id   = "${each.key}-${each.value.sigla}-${terraform.workspace}"
+  display_name = coalesce(
+    each.value.display_name,
+    "SA ${each.key} (${terraform.workspace})"
+  )
+  description = each.value.description
+  disabled    = each.value.disabled
 }
