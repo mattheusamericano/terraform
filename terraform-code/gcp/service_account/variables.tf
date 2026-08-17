@@ -6,5 +6,10 @@ variable "sa_settings" {
     display_name = optional(string)
     description  = optional(string, "Service Account gerenciada via Terraform")
     disabled     = optional(bool, false)
+
+    # Roles de projeto concedidas a esta SA (aditivo via google_project_iam_member).
+    # Cada SA do mapa pode ter uma lista de roles diferente. Concedida sempre no
+    # mesmo project_id da SA — para conceder role em outro projeto, use o iam_new.
+    roles = optional(list(string), [])
   }))
 }
