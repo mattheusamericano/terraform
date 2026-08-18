@@ -8,10 +8,10 @@ variable "composer_settings" {
     # --------------------------------------------------------
     # Identificação
     # --------------------------------------------------------
-    project_id              = string
-    network_project_id      = string 
-    sigla                   = string
-    region                  = string
+    project_id         = string
+    network_project_id = string
+    sigla              = string
+    region             = string
 
     # --------------------------------------------------------
     # Imagem
@@ -21,10 +21,10 @@ variable "composer_settings" {
     # --------------------------------------------------------
     # Rede (Shared VPC)
     # --------------------------------------------------------
-    network_name                   = string
-    subnetwork_name                = string
-    pods_ip_range_name             = string
-    services_ip_range_name         = string
+    network_name           = string
+    subnetwork_name        = string
+    pods_ip_range_name     = string
+    services_ip_range_name = string
 
     # --------------------------------------------------------
     # Tamanho do ambiente
@@ -82,10 +82,16 @@ variable "composer_settings" {
     # --------------------------------------------------------
     # Recursos opcionais
     # --------------------------------------------------------
-    enable_data_lineage          = optional(bool, false)
-    kms_project_id               = optional(string, null)
-    key_ring                     = optional(string, null)
-    key_crypto                   = optional(string, null)
+    enable_data_lineage = optional(bool, false)
+
+    # --------------------------------------------------------
+    # Criptografia (KMS) - obrigatória (premissa da empresa: todo
+    # ambiente Composer é criptografado com CMEK, não com a chave
+    # padrão do Google)
+    # --------------------------------------------------------
+    kms_project_id = string
+    key_ring       = string
+    key_crypto     = string
     # --------------------------------------------------------
     # Maintenance Window
     # --------------------------------------------------------
@@ -100,13 +106,4 @@ variable "composer_settings" {
     # --------------------------------------------------------
     labels = optional(map(string), {})
   }))
-}
-
-#Variavel fora do bloco map object
-variable "project_id" {
-  type = string  
-}
-
-variable "network_project_id" {
-  type = string  
 }

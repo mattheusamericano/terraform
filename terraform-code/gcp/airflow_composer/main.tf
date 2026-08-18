@@ -24,8 +24,8 @@ resource "google_composer_environment" "composer" {
     enable_private_builds_only = true
 
     software_config {
-      image_version    = each.value.image_version
-      pypi_packages    = each.value.pypi_packages
+      image_version = each.value.image_version
+      pypi_packages = each.value.pypi_packages
 
       # Secret Manager como backend de variáveis e connections
       dynamic "cloud_data_lineage_integration" {
@@ -88,13 +88,10 @@ resource "google_composer_environment" "composer" {
       }
     }
     # --------------------------------------------------------
-    # Encryption (KMS) - opcional
+    # Encryption (KMS) - obrigatória (CMEK)
     # --------------------------------------------------------
-    dynamic "encryption_config" {
-      for_each = each.value.key_ring != null ? [1] : []
-      content {
-        kms_key_name = data.google_kms_crypto_key.composer[each.key].id
-      }
+    encryption_config {
+      kms_key_name = data.google_kms_crypto_key.composer[each.key].id
     }
 
     # --------------------------------------------------------
@@ -113,7 +110,7 @@ resource "google_composer_environment" "composer" {
     # Data Retention (Composer 3)
     # --------------------------------------------------------
     data_retention_config {
-      airflow_metadata_retention_config{
+      airflow_metadata_retention_config {
         retention_days = 30
         retention_mode = "RETENTION_MODE_ENABLED"
       }

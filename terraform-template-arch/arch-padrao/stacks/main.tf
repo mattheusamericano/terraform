@@ -135,8 +135,7 @@ module "wipool" {
 #
 module "airflow_composer" {
     source      = "../../tf-modules-for-gcp/airflow_composer"
-    composer_settings   = var.enabled_airflow_composer == true ? {for k, v in var.composer_settings : k => merge(v, { labels = local.common_labels }) } : {}    
-    project_id          = var.project_id
+    composer_settings   = var.enabled_airflow_composer == true ? {for k, v in var.composer_settings : k => merge(v, { labels = local.common_labels }) } : {}
 }
 #
 # CLOUD_RUN
