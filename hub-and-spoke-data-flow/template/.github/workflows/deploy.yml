@@ -61,12 +61,34 @@ jobs:
           get_var() {
             grep -E "^$1=" vars.env | tail -n1 | cut -d'=' -f2- | tr -d '\r'
           }
-          echo "project_id_mdl=$(get_var TRAIN_PROJECT_ID)" >> "$GITHUB_OUTPUT"
-          echo "project_id_inf=$(get_var SERVING_PROJECT_ID)" >> "$GITHUB_OUTPUT"
-          echo "region=$(get_var REGION)" >> "$GITHUB_OUTPUT"
-          echo "workerpool_mdl=$(get_var WORKERPOOL_DEV)" >> "$GITHUB_OUTPUT"
-          echo "workerpool_inf=$(get_var WORKERPOOL_PROD)" >> "$GITHUB_OUTPUT"
-          echo "branch_name=$(get_var BRANCH_NAME)" >> "$GITHUB_OUTPUT"
+
+          PROJECT_ID_MDL="$(get_var TRAIN_PROJECT_ID)"
+          PROJECT_ID_INF="$(get_var SERVING_PROJECT_ID)"
+          REGION_VAL="$(get_var REGION)"
+          WORKERPOOL_MDL_VAL="$(get_var WORKERPOOL_DEV)"
+          WORKERPOOL_INF_VAL="$(get_var WORKERPOOL_PROD)"
+          BRANCH_NAME_VAL="$(get_var BRANCH_NAME)"
+
+          # Debug: imprime o que foi extraído no log do job (não é secret,
+          # são só nomes de projeto/branch/worker pool) — se algo aqui sair
+          # vazio ou diferente do esperado, é por isso que os jobs de treino
+          # ficam "skipped" (o `if:` deles depende desses valores).
+          echo "=== Valores extraídos de vars.env ==="
+          echo "TRAIN_PROJECT_ID   -> '$PROJECT_ID_MDL'"
+          echo "SERVING_PROJECT_ID -> '$PROJECT_ID_INF'"
+          echo "REGION             -> '$REGION_VAL'"
+          echo "WORKERPOOL_DEV     -> '$WORKERPOOL_MDL_VAL'"
+          echo "WORKERPOOL_PROD    -> '$WORKERPOOL_INF_VAL'"
+          echo "BRANCH_NAME        -> '$BRANCH_NAME_VAL'"
+          echo "github.ref deste run -> '${{ github.ref }}'"
+          echo "===================================="
+
+          echo "project_id_mdl=$PROJECT_ID_MDL" >> "$GITHUB_OUTPUT"
+          echo "project_id_inf=$PROJECT_ID_INF" >> "$GITHUB_OUTPUT"
+          echo "region=$REGION_VAL" >> "$GITHUB_OUTPUT"
+          echo "workerpool_mdl=$WORKERPOOL_MDL_VAL" >> "$GITHUB_OUTPUT"
+          echo "workerpool_inf=$WORKERPOOL_INF_VAL" >> "$GITHUB_OUTPUT"
+          echo "branch_name=$BRANCH_NAME_VAL" >> "$GITHUB_OUTPUT"
 
   train-and-evaluate-mdl:
     name: Train and Evaluate Model (MDL)
