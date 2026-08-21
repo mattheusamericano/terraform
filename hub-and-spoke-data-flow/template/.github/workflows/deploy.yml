@@ -1,8 +1,20 @@
 # ==============================================================================
 # TEMPLATE — GitHub Actions: gatilho de CI/CD via Cloud Build
 # ==============================================================================
-# Preencha todo campo entre duplo underscore abaixo (ou use generate.sh +
-# vars.example.env). Requer os secrets do repositório:
+# Preencha todo campo entre duplo underscore abaixo (ou use generate.sh, ou
+# suba um vars.env pra este repositório — o job "bootstrap-template" abaixo
+# resolve os placeholders sozinho, sem precisar de git/terminal local; ver
+# README.md, seção "Opção 0").
+#
+# Por que "bootstrap-template" é um job aqui dentro, e não um step comum:
+# o bloco `env:` no topo do arquivo é fixado no momento em que o run começa
+# — um step no meio do MESMO run não consegue fazer os outros jobs "verem" um
+# valor novo. Por isso o bootstrap comita e dá push do resultado; esse push
+# aciona um NOVO run deste mesmo workflow, já sem `vars.env` e com os valores
+# reais, e aí sim os jobs de treino executam normalmente. Continua sendo um
+# único arquivo, sem processo/workflow separado.
+#
+# Requer os secrets do repositório (usados pelos jobs de treino):
 #   - workload_identity_provider_gcp
 #   - service_account_gcp
 # ==============================================================================
@@ -10,9 +22,12 @@ name: MLOps Model Training Deployment
 
 on:
   push:
-    branches: [__branch_name__]
+    branches:
+      - main
+      - __branch_name__
     tags:
       - 'v*'
+  workflow_dispatch: {} # fallback manual (aba Actions → "Run workflow")
 
 env:
   GCP_PROJECT_ID_MDL: __train_project_id__
@@ -22,10 +37,76 @@ env:
   WORKERPOOL_INF: __workerpool_prod__
 
 jobs:
+  # --------------------------------------------------------------------------
+  # Verifica se ainda falta resolver os placeholders (existência de vars.env).
+  # Job próprio (em vez de hashFiles() direto no `if:` dos outros jobs) porque
+  # cada job começa num runner com workspace vazio — hashFiles() só é
+  # confiável depois de um checkout, então fazemos esse checkout aqui e
+  # repassamos o resultado via output.
+  # --------------------------------------------------------------------------
+  check-template-status:
+    name: Verifica se o template já foi instanciado
+    runs-on: ubuntu-latest
+    outputs:
+      has_vars_env: ${{ steps.check.outputs.found }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: |
+          if [ -f "vars.env" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # --------------------------------------------------------------------------
+  # Roda só quando vars.env existe. Aplica as variáveis em todo o
+  # repositório, remove as ferramentas de instanciação do template (inclusive
+  # vars.env) e comita/dá push do resultado.
+  # --------------------------------------------------------------------------
+  bootstrap-template:
+    name: Bootstrap Template (preenche variáveis a partir de vars.env)
+    needs: check-template-status
+    if: needs.check-template-status.outputs.has_vars_env == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Remove documentação/ferramentas não essenciais à substituição
+        run: |
+          # Removidos antes de aplicar as variáveis para não serem varridos
+          # pela checagem de placeholders dentro de apply-vars.sh (eles falam
+          # SOBRE o formato __PLACEHOLDER__ no texto, o que confundiria a
+          # checagem).
+          rm -f generate.sh vars.example.env README.md
+
+      - name: Aplica as variáveis de vars.env em todo o repositório
+        run: |
+          chmod +x apply-vars.sh
+          ./apply-vars.sh vars.env .
+
+      - name: Remove vars.env e apply-vars.sh
+        run: rm -f vars.env apply-vars.sh
+
+      - name: Commit e push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: instancia template a partir de vars.env"
+          git push
+
+  # --------------------------------------------------------------------------
+  # Jobs de treino/promoção — só rodam quando o template já foi instanciado
+  # (vars.env não existe mais).
+  # --------------------------------------------------------------------------
   train-and-evaluate-mdl:
     name: Train and Evaluate Model (MDL)
+    needs: check-template-status
+    if: needs.check-template-status.outputs.has_vars_env == 'false' && github.ref == 'refs/heads/__branch_name__'
     runs-on: arc-runner-set-default-gcp-caixagithub-prod
-    if: github.ref == 'refs/heads/__branch_name__'
     permissions:
       contents: read
       id-token: write   # necessário para Workload Identity Federation
@@ -56,8 +137,9 @@ jobs:
 
   train-and-evaluate-inf:
     name: Train and Evaluate Model (INF)
+    needs: check-template-status
+    if: needs.check-template-status.outputs.has_vars_env == 'false' && startsWith(github.ref, 'refs/tags/v')
     runs-on: arc-runner-set-default-gcp-caixagithub-prod
-    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
       id-token: write

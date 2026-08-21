@@ -26,11 +26,13 @@ Ou seja, no fluxo atual, treino via Vertex AI só acontece pelo `dev.yaml` (`pip
 <raiz do repositório>/
 ├── README.md                              # este arquivo
 ├── vars.example.env                       # exemplo de variáveis a preencher
-├── generate.sh                            # copia + preenche o template automaticamente
+├── generate.sh                            # fluxo local: copia + preenche numa pasta separada
+├── apply-vars.sh                          # motor de substituição comum (usado por generate.sh e pelo bootstrap)
 ├── requirements.txt                       # dependências Python (genérico)
 ├── .gcloudignore                          # genérico, não precisa editar
 ├── model-config.yaml                      # config declarativa do ciclo de vida do modelo
-├── .github/workflows/deploy.yml           # gatilho de CI/CD
+├── .github/workflows/
+│   └── deploy.yml                         # gatilho de CI/CD — inclui o job que resolve as variáveis
 ├── .cloudbuild/
 │   ├── dev.yaml                           # build de modelagem (branch)
 │   └── prod.yaml                          # build de inferência (tags v*)
@@ -45,20 +47,35 @@ Ou seja, no fluxo atual, treino via Vertex AI só acontece pelo `dev.yaml` (`pip
 
 ## Como usar
 
-### Opção 1 — automática (`generate.sh`)
+### Opção 0 — automática via esteira, sem git nem terminal local (recomendada)
 
-A partir da raiz deste repositório:
+Pra quem já cria/provisiona o repositório por outro meio (Fusion X, "Use this template" do GitHub, ou qualquer outra forma) e só precisa que os placeholders sejam preenchidos: isso já está embutido como um job condicional dentro do próprio `.github/workflows/deploy.yml` — não é um workflow nem processo separado.
+
+**Como funciona:** o `deploy.yml` tem um job `check-template-status` que verifica se `vars.env` existe no repositório. Se existir, roda **só** o job `bootstrap-template` (aplica as variáveis em todos os arquivos, remove `vars.env` e as ferramentas de instanciação — `generate.sh`, `apply-vars.sh`, `vars.example.env`, `README.md` — e comita/dá push do resultado); os jobs de treino ficam pulados nesse run. O push do bootstrap aciona um **novo** run do mesmo `deploy.yml`, agora sem `vars.env`, e aí sim os jobs de treino rodam normalmente, já com os valores reais.
+
+**Passo a passo, depois que o repositório (com os arquivos deste template) já existe:**
+1. Pelo navegador (ou por onde for mais conveniente): crie um arquivo `vars.env` na raiz do repositório com o conteúdo de `vars.example.env` preenchido com os valores reais.
+2. Comite/dê push desse arquivo na branch padrão do repositório (ou dispare manualmente pela aba **Actions → MLOps Model Training Deployment → Run workflow**, se preferir não depender do nome da branch).
+3. Acompanhe a aba **Actions** — o job `bootstrap-template` roda e, quando terminar (ícone verde), o repositório já está pronto, sem nenhum placeholder sobrando.
+
+Se a branch padrão tiver proteção que bloqueia push direto (exige PR, por exemplo), o push do job falha — nesse caso, desative a proteção temporariamente só pra esse primeiro commit, ou use a Opção 1 abaixo.
+
+> O gatilho (`on: push:`) do `deploy.yml` já escuta a branch `main` além da `__branch_name__` final, exatamente pra cobrir esse primeiro push antes de `__branch_name__` virar um valor real. Se o repositório usar outro nome de branch padrão, ajuste `on.push.branches` ou use o `workflow_dispatch` manual.
+
+### Opção 1 — local (`generate.sh`)
+
+Se você tem git/bash disponíveis (máquina local, Cloud Shell, Codespace):
 
 ```bash
 cp vars.example.env vars.env      # edite vars.env com os dados reais do novo produto
 ./generate.sh vars.env ../repositorio-do-novo-produto
 ```
 
-O script copia todos os arquivos deste repositório para `../repositorio-do-novo-produto`, substitui cada `__chave__` pelo valor definido em `vars.env` e avisa se sobrou algum placeholder sem preencher (comparado por nome — se você usar uma chave que não existe em nenhum arquivo do template, ou esquecer uma que existe, o aviso aparece). `vars.env` não é versionado por padrão (adicione ao `.gitignore` se ele guardar algo sensível) — o `vars.example.env` é só o modelo.
+O script copia todos os arquivos deste repositório para `../repositorio-do-novo-produto` e aplica `vars.env` nessa cópia (usando `apply-vars.sh`, o mesmo motor de substituição da Opção 0). Se sobrar algum placeholder sem preencher, o script termina com erro (código de saída != 0) e mostra exatamente qual arquivo/linha ficou pendente. `vars.env` não é versionado por padrão (adicione ao `.gitignore` se ele guardar algo sensível) — o `vars.example.env` é só o modelo.
 
 ### Opção 2 — manual
 
-Sem usar o script: substitua manualmente, direto neste repositório, cada `__chave__` (em minúsculo, ex.: `__region__`) pelo valor correspondente. A tabela abaixo lista todos os placeholders usados.
+Sem usar nenhum script: substitua manualmente, direto neste repositório, cada `__CHAVE__` (em minúsculo, ex.: `__region__`) pelo valor correspondente. A tabela abaixo lista todos os placeholders usados.
 
 ## Variáveis do template
 
@@ -95,7 +112,7 @@ Sem usar o script: substitua manualmente, direto neste repositório, cada `__cha
 
 ## Dois mecanismos de variável — não confunda os dois
 
-1. **Placeholders `__chave__`** (este README, `vars.env`, `generate.sh`): preenchidos **uma vez**, quando o template é instanciado para um novo produto. Depois de gerado, eles não existem mais nos arquivos — viraram texto fixo.
+1. **Placeholders `__CHAVE__`** (este README, `vars.env`, `generate.sh`): preenchidos **uma vez**, quando o template é instanciado para um novo produto. Depois de gerado, eles não existem mais nos arquivos — viraram texto fixo.
 2. **`substitutions:` do Cloud Build** (dentro de `.cloudbuild/dev.yaml`/`prod.yaml`, ex.: `_REGION`, `_TAG_NAME`): continuam existindo no arquivo gerado, com o valor do placeholder como *default*. Servem para variar algo **por execução de build**, sem editar o arquivo, via `gcloud builds submit --substitutions=_VAR=valor` — é assim que `deploy.yml` já repassa a tag de release (`_TAG_NAME`) hoje.
 
 Ou seja: `__workflow_name__` você preenche uma vez ao adotar o template (via `generate.sh`); `_TAG_NAME` você pode variar a cada build sem tocar em nada.
