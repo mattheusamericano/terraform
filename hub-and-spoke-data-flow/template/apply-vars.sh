@@ -7,9 +7,8 @@
 # É o motor de substituição comum a dois fluxos:
 #   - generate.sh: fluxo local/manual (copia o template pra outra pasta e
 #     aplica as variáveis nela).
-#   - .github/workflows/bootstrap.yml: fluxo automático via GitHub, sem git
-#     local — aplica as variáveis direto no próprio repositório já criado
-#     a partir do template.
+#   - .github/workflows/deploy.yml: chamado a cada execução dos jobs de
+#     treino, direto no workspace do runner — nunca commitado/dado push.
 #
 # Uso: apply-vars.sh <arquivo-de-variaveis> <diretorio-alvo>
 # Sai com código != 0 se sobrar algum placeholder __..__ não preenchido.
@@ -23,6 +22,7 @@ usage() {
 
 trim() {
   local s="$1"
+  s="${s%$'\r'}"          # remove \r de fim de linha (arquivo salvo com CRLF/Windows)
   s="${s#"${s%%[![:space:]]*}"}"
   s="${s%"${s##*[![:space:]]}"}"
   printf '%s' "$s"

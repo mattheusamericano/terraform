@@ -109,7 +109,7 @@ O script copia todos os arquivos deste repositório para `../repositorio-do-novo
 ## Três mecanismos de variável — não confunda os três
 
 1. **Placeholders `__CHAVE__`** (`model-config.yaml`, `.cloudbuild/*.yaml`, `pipeline.py`, `src/*.sql`, `model_promotion_workflow.yaml`): resolvidos pelo `apply-vars.sh` — em runtime, dentro do job de treino, a cada execução (uso recomendado); ou uma única vez, "congelados", se você usar `generate.sh`.
-2. **Chaves lidas direto de `vars.env` em runtime** (`BRANCH_NAME`, `WORKERPOOL_DEV`, `WORKERPOOL_PROD`, e também `TRAIN_PROJECT_ID`/`SERVING_PROJECT_ID`/`REGION` no job `load-config`): nunca viram `__placeholder__` em arquivo nenhum — `deploy.yml` só faz `source vars.env` e usa o valor na hora.
+2. **Chaves lidas direto de `vars.env` em runtime** (`BRANCH_NAME`, `WORKERPOOL_DEV`, `WORKERPOOL_PROD`, e também `TRAIN_PROJECT_ID`/`SERVING_PROJECT_ID`/`REGION` no job `load-config`): nunca viram `__PLACEHOLDER__` em arquivo nenhum — `deploy.yml` só faz `source vars.env` e usa o valor na hora.
 3. **`substitutions:` do Cloud Build** (dentro de `.cloudbuild/dev.yaml`/`prod.yaml`, ex.: `_REGION`, `_TAG_NAME`): esses `_VAR` do Cloud Build já vêm resolvidos pelo mecanismo 1 (via `apply-vars.sh`) antes do `gcloud builds submit`; a exceção é `_TAG_NAME`, que continua sendo passado por `--substitutions` a cada build (é a tag da release, varia a cada execução, não faz sentido vir de `vars.env`).
 
 ## Checklist antes do primeiro push

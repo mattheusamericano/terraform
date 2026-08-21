@@ -1,0 +1,11 @@
+# Força LF nestes arquivos independente do sistema operacional/config local
+# de quem clona ou edita — evita que vars.env (ou os scripts) sejam salvos
+# com CRLF no Windows e quebrem `source`/bash em runners Linux do Actions.
+* text=auto eol=lf
+
+*.env   text eol=lf
+*.sh    text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.py    text eol=lf
+*.sql   text eol=lf

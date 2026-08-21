@@ -53,6 +53,10 @@ jobs:
       - name: Lê vars.env
         id: vars
         run: |
+          # Remove \r de fim de linha (vars.env salvo com CRLF/Windows quebra
+          # o `source`: uma linha em branco vira um "$'\r'" que o bash tenta
+          # rodar como comando).
+          sed -i 's/\r$//' vars.env
           set -a
           # shellcheck disable=SC1091
           source vars.env
