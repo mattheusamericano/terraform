@@ -26,13 +26,13 @@ Ou seja, no fluxo atual, treino via Vertex AI só acontece pelo `dev.yaml` (`pip
 <raiz do repositório>/
 ├── README.md                              # este arquivo
 ├── vars.example.env                       # exemplo de variáveis a preencher
-├── generate.sh                            # fluxo local: copia + preenche numa pasta separada
-├── apply-vars.sh                          # motor de substituição comum (usado por generate.sh e pelo bootstrap)
+├── generate.sh                            # opcional: "congela" os valores nos arquivos, numa pasta separada
+├── apply-vars.sh                          # motor de substituição comum (usado por generate.sh e pelos jobs de treino)
 ├── requirements.txt                       # dependências Python (genérico)
 ├── .gcloudignore                          # genérico, não precisa editar
 ├── model-config.yaml                      # config declarativa do ciclo de vida do modelo
 ├── .github/workflows/
-│   └── deploy.yml                         # gatilho de CI/CD — inclui o job que resolve as variáveis
+│   └── deploy.yml                         # gatilho de CI/CD — sem placeholder, lê vars.env em cada run
 ├── .cloudbuild/
 │   ├── dev.yaml                           # build de modelagem (branch)
 │   └── prod.yaml                          # build de inferência (tags v*)
@@ -47,37 +47,33 @@ Ou seja, no fluxo atual, treino via Vertex AI só acontece pelo `dev.yaml` (`pip
 
 ## Como usar
 
-### Opção 0 — automática via esteira, sem git nem terminal local (recomendada)
+### Uso recomendado — vars.env resolvido em tempo de execução, sem commit automático
 
-Pra quem já cria/provisiona o repositório por outro meio (Fusion X, "Use this template" do GitHub, ou qualquer outra forma) e só precisa que os placeholders sejam preenchidos: isso já está embutido como um job condicional dentro do próprio `.github/workflows/deploy.yml` — não é um workflow nem processo separado.
+`deploy.yml` **não tem nenhum placeholder** — nunca precisa ser "instanciado". Toda a configuração vem de `vars.env`, lido do zero a cada execução do workflow:
+- Um job `load-config` faz checkout, lê `vars.env` e repassa os valores (projetos, região, worker pools, branch) pros outros jobs via `needs.load-config.outputs` — só assim dá pra usar esses valores no `if:`/`env` dos jobs de treino, já que o `if:` de um job é avaliado antes de qualquer step dele rodar.
+- Os jobs `train-and-evaluate-mdl`/`train-and-evaluate-inf` rodam `apply-vars.sh vars.env .` logo depois do checkout — isso resolve os placeholders de `model-config.yaml`, `pipeline.py`, os `*.sql` e os defaults de `.cloudbuild/*.yaml` **só no workspace daquele run**, nunca commitado. Na sequência, `gcloud builds submit .` envia esse workspace já resolvido pro Cloud Build.
 
-**Como funciona:** o `deploy.yml` tem um job `check-template-status` que verifica se `vars.env` existe no repositório. Se existir, roda **só** o job `bootstrap-template` (aplica as variáveis em todos os arquivos, remove `vars.env` e as ferramentas de instanciação — `generate.sh`, `apply-vars.sh`, `vars.example.env`, `README.md` — e comita/dá push do resultado); os jobs de treino ficam pulados nesse run. O push do bootstrap aciona um **novo** run do mesmo `deploy.yml`, agora sem `vars.env`, e aí sim os jobs de treino rodam normalmente, já com os valores reais.
+Ou seja: **nenhum commit automático acontece nunca** — nem para preencher placeholders, nem para "limpar" o template depois. `vars.env` é um arquivo normal e permanente do repositório, do mesmo jeito que `model-config.yaml` já era; editar um valor (trocar projeto, região, etc.) é só um commit seu de `vars.env`, sem precisar rodar nada.
 
-**Passo a passo, depois que o repositório (com os arquivos deste template) já existe:**
-1. Pelo navegador (ou por onde for mais conveniente): crie um arquivo `vars.env` na raiz do repositório com o conteúdo de `vars.example.env` preenchido com os valores reais.
-2. Comite/dê push desse arquivo na branch padrão do repositório (ou dispare manualmente pela aba **Actions → MLOps Model Training Deployment → Run workflow**, se preferir não depender do nome da branch).
-3. Acompanhe a aba **Actions** — o job `bootstrap-template` roda e, quando terminar (ícone verde), o repositório já está pronto, sem nenhum placeholder sobrando.
+**Passo a passo:**
+1. Pelo navegador (ou por onde for mais conveniente — Fusion X, `git`, etc.): crie `vars.env` na raiz do repositório com o conteúdo de `vars.example.env` preenchido com os valores reais.
+2. Comite/dê push normalmente. Push numa branch dispara `train-and-evaluate-mdl` se `BRANCH_NAME` (dentro do `vars.env`) bater com a branch do push; uma tag `v*` dispara `train-and-evaluate-inf`. Também dá pra disparar manualmente pela aba **Actions → MLOps Model Training Deployment → Run workflow**.
+3. Acompanhe a aba **Actions**.
 
-Se a branch padrão tiver proteção que bloqueia push direto (exige PR, por exemplo), o push do job falha — nesse caso, desative a proteção temporariamente só pra esse primeiro commit, ou use a Opção 1 abaixo.
+Não precisa de nenhum secret além dos já existentes (`workload_identity_provider_gcp`, `service_account_gcp`) — como nada é commitado de volta, não existe a restrição do GitHub sobre alterar `.github/workflows/` (essa trava só se aplica quando o próprio Actions tenta dar push num arquivo de workflow; aqui isso nunca acontece).
 
-> O gatilho (`on: push:`) do `deploy.yml` já escuta a branch `main` além da `__branch_name__` final, exatamente pra cobrir esse primeiro push antes de `__branch_name__` virar um valor real. Se o repositório usar outro nome de branch padrão, ajuste `on.push.branches` ou use o `workflow_dispatch` manual.
+### Alternativa — "congelar" os valores nos arquivos (`generate.sh`)
 
-### Opção 1 — local (`generate.sh`)
-
-Se você tem git/bash disponíveis (máquina local, Cloud Shell, Codespace):
+Se você preferir não depender de `vars.env` em tempo de execução — por exemplo, pra gerar um repositório com os valores permanentemente escritos nos arquivos, sem esse arquivo de configuração à parte — use `generate.sh` (precisa de terminal com bash, local ou num Cloud Shell/Codespace):
 
 ```bash
 cp vars.example.env vars.env      # edite vars.env com os dados reais do novo produto
 ./generate.sh vars.env ../repositorio-do-novo-produto
 ```
 
-O script copia todos os arquivos deste repositório para `../repositorio-do-novo-produto` e aplica `vars.env` nessa cópia (usando `apply-vars.sh`, o mesmo motor de substituição da Opção 0). Se sobrar algum placeholder sem preencher, o script termina com erro (código de saída != 0) e mostra exatamente qual arquivo/linha ficou pendente. `vars.env` não é versionado por padrão (adicione ao `.gitignore` se ele guardar algo sensível) — o `vars.example.env` é só o modelo.
+O script copia todos os arquivos deste repositório para `../repositorio-do-novo-produto` e aplica `vars.env` nessa cópia (usando `apply-vars.sh`), removendo `vars.env`/`generate.sh`/`apply-vars.sh`/`vars.example.env`/`README.md` do resultado — o repositório gerado fica com os valores fixos nos arquivos, sem depender de `vars.env` para nada (nesse caso o `deploy.yml` também não precisaria mais do job `load-config`/`apply-vars.sh`, mas o template não remove esses jobs automaticamente — eles só passam a não fazer diferença, já que não há mais placeholder pra resolver). Se sobrar algum placeholder sem preencher, o script termina com erro (código de saída != 0) e mostra exatamente qual arquivo/linha ficou pendente.
 
-### Opção 2 — manual
-
-Sem usar nenhum script: substitua manualmente, direto neste repositório, cada `__CHAVE__` (em minúsculo, ex.: `__region__`) pelo valor correspondente. A tabela abaixo lista todos os placeholders usados.
-
-## Variáveis do template
+## Variáveis (`vars.env`) e placeholders (`__CHAVE__`)
 
 | Placeholder | Chave em `vars.env` | Onde aparece | Exemplo |
 |---|---|---|---|
@@ -89,8 +85,8 @@ Sem usar nenhum script: substitua manualmente, direto neste repositório, cada `
 | `__dataset_id__` | `DATASET_ID` | `model-config.yaml`, `model_promotion_workflow.yaml`, `pipeline.py` (fallback) | `served` |
 | `__models_dataset__` | `MODELS_DATASET` | `.cloudbuild/dev.yaml`, `src/*.sql` | `models` |
 | `__region__` | `REGION` | todos, inclusive `pipeline.py` | `southamerica-east1` |
-| `__train_project_id__` | `TRAIN_PROJECT_ID` | `model-config.yaml`, `deploy.yml`, `pipeline.py` (fallback) | `prj-meuproduto-mdl-prd` |
-| `__serving_project_id__` | `SERVING_PROJECT_ID` | `model-config.yaml`, `deploy.yml`, `model_promotion_workflow.yaml` | `prj-meuproduto-inf-prd` |
+| `__train_project_id__` | `TRAIN_PROJECT_ID` | `model-config.yaml`, `pipeline.py` (fallback); lido também em runtime por `deploy.yml` (job `load-config`) | `prj-meuproduto-mdl-prd` |
+| `__serving_project_id__` | `SERVING_PROJECT_ID` | `model-config.yaml`, `model_promotion_workflow.yaml`; lido também em runtime por `deploy.yml` (job `load-config`) | `prj-meuproduto-inf-prd` |
 | `__hub_project_id__` | `HUB_PROJECT_ID` | `model_promotion_workflow.yaml` | `prj-hub-poc` |
 | `__train_pipeline_root__` | `TRAIN_PIPELINE_ROOT` | `model-config.yaml`, `pipeline.py` | `gs://bucket-.../pipeline_root` |
 | `__train_models_export_uri__` | `TRAIN_MODELS_EXPORT_URI` | `src/export_model.sql` | `gs://bucket-.../models/meuproduto_risk_xgb_v1` |
@@ -106,22 +102,21 @@ Sem usar nenhum script: substitua manualmente, direto neste repositório, cada `
 | `__dataform_sa_prefix__` | `DATAFORM_SA_PREFIX` | `.cloudbuild/prod.yaml`, `model_promotion_workflow.yaml` | `sa-df-meuproduto` |
 | `__data_exchange_id__` | `DATA_EXCHANGE_ID` | `model_promotion_workflow.yaml` | `exchange_meuproduto` |
 | `__listing_id__` | `LISTING_ID` | `model_promotion_workflow.yaml` | `listing_meuproduto` |
-| `__branch_name__` | `BRANCH_NAME` | `deploy.yml` | `meuproduto-model` |
-| `__workerpool_dev__` | `WORKERPOOL_DEV` | `deploy.yml` | `workerpool-meuproduto-mdl` |
-| `__workerpool_prod__` | `WORKERPOOL_PROD` | `deploy.yml` | `workerpool-meuproduto-inf` |
+| — *(sem placeholder — só runtime)* | `BRANCH_NAME` | Lido em runtime por `deploy.yml` (job `load-config`), decide se `train-and-evaluate-mdl` roda naquele push | `meuproduto-model` |
+| — *(sem placeholder — só runtime)* | `WORKERPOOL_DEV` | Lido em runtime por `deploy.yml` (job `load-config`) | `workerpool-meuproduto-mdl` |
+| — *(sem placeholder — só runtime)* | `WORKERPOOL_PROD` | Lido em runtime por `deploy.yml` (job `load-config`) | `workerpool-meuproduto-inf` |
 
-## Dois mecanismos de variável — não confunda os dois
+## Três mecanismos de variável — não confunda os três
 
-1. **Placeholders `__CHAVE__`** (este README, `vars.env`, `generate.sh`): preenchidos **uma vez**, quando o template é instanciado para um novo produto. Depois de gerado, eles não existem mais nos arquivos — viraram texto fixo.
-2. **`substitutions:` do Cloud Build** (dentro de `.cloudbuild/dev.yaml`/`prod.yaml`, ex.: `_REGION`, `_TAG_NAME`): continuam existindo no arquivo gerado, com o valor do placeholder como *default*. Servem para variar algo **por execução de build**, sem editar o arquivo, via `gcloud builds submit --substitutions=_VAR=valor` — é assim que `deploy.yml` já repassa a tag de release (`_TAG_NAME`) hoje.
+1. **Placeholders `__CHAVE__`** (`model-config.yaml`, `.cloudbuild/*.yaml`, `pipeline.py`, `src/*.sql`, `model_promotion_workflow.yaml`): resolvidos pelo `apply-vars.sh` — em runtime, dentro do job de treino, a cada execução (uso recomendado); ou uma única vez, "congelados", se você usar `generate.sh`.
+2. **Chaves lidas direto de `vars.env` em runtime** (`BRANCH_NAME`, `WORKERPOOL_DEV`, `WORKERPOOL_PROD`, e também `TRAIN_PROJECT_ID`/`SERVING_PROJECT_ID`/`REGION` no job `load-config`): nunca viram `__placeholder__` em arquivo nenhum — `deploy.yml` só faz `source vars.env` e usa o valor na hora.
+3. **`substitutions:` do Cloud Build** (dentro de `.cloudbuild/dev.yaml`/`prod.yaml`, ex.: `_REGION`, `_TAG_NAME`): esses `_VAR` do Cloud Build já vêm resolvidos pelo mecanismo 1 (via `apply-vars.sh`) antes do `gcloud builds submit`; a exceção é `_TAG_NAME`, que continua sendo passado por `--substitutions` a cada build (é a tag da release, varia a cada execução, não faz sentido vir de `vars.env`).
 
-Ou seja: `__workflow_name__` você preenche uma vez ao adotar o template (via `generate.sh`); `_TAG_NAME` você pode variar a cada build sem tocar em nada.
+## Checklist antes do primeiro push
 
-## Checklist depois de gerar
-
-1. Confira `model-config.yaml` gerado — principalmente os buckets e service accounts, que costumam ter nomes com pequenas variações reais do que está no exemplo.
+1. Preencha `vars.env` a partir de `vars.example.env` com os valores reais — confira principalmente buckets e service accounts, que costumam ter nomes com pequenas variações reais do que está no exemplo.
 2. Rode o fluxo de ponta a ponta como veio (sem trocar nada em `pipelines/pipeline.py`/`src/*.sql`) contra um projeto de teste — é um pipeline funcional de treino BQML + deploy, serve pra validar que a esteira de CI/CD toda está correta antes de mexer em lógica de modelo.
 3. Quando for além do pontapé inicial: troque `src/train_model.sql` (e `evaluate_model.sql`) pela tabela e pelas colunas de features/label do seu modelo real. `pipelines/pipeline.py` (orquestração, deploy, Canary Split) normalmente não precisa mudar.
-4. Configure os secrets do repositório novo: `workload_identity_provider_gcp` e `service_account_gcp` (usados por `deploy.yml` para autenticar via Workload Identity Federation).
+4. Configure os secrets do repositório: `workload_identity_provider_gcp` e `service_account_gcp` (usados por `deploy.yml` para autenticar via Workload Identity Federation). Não precisa de nenhum secret adicional — nada é commitado automaticamente.
 5. Confirme que os Worker Pools privados (`WORKERPOOL_DEV`/`WORKERPOOL_PROD`) e o Cloud Workflow (`WORKFLOW_NAME`) já existem nos projetos de destino, ou provisione-os antes do primeiro push/tag — este template não os cria, só os referencia.
-6. `git push` na branch configurada em `BRANCH_NAME` dispara o job de modelagem; uma tag `v*` dispara o job de inferência/promoção.
+6. Push numa branch cujo nome bate com `BRANCH_NAME` (dentro de `vars.env`) dispara o job de modelagem; uma tag `v*` dispara o job de inferência/promoção.

@@ -1,111 +1,73 @@
 # ==============================================================================
 # TEMPLATE — GitHub Actions: gatilho de CI/CD via Cloud Build
 # ==============================================================================
-# Preencha todo campo entre duplo underscore abaixo (ou use generate.sh, ou
-# suba um vars.env pra este repositório — o job "bootstrap-template" abaixo
-# resolve os placeholders sozinho, sem precisar de git/terminal local; ver
-# README.md, seção "Opção 0").
+# Este arquivo NÃO tem placeholder nenhum — nunca precisa ser editado nem
+# "instanciado". Toda a configuração (projetos, região, worker pools, branch,
+# etc.) vem de `vars.env`, lido do zero em cada execução pelo job
+# `load-config` e repassado aos outros jobs via `needs.load-config.outputs`.
 #
-# Por que "bootstrap-template" é um job aqui dentro, e não um step comum:
-# o bloco `env:` no topo do arquivo é fixado no momento em que o run começa
-# — um step no meio do MESMO run não consegue fazer os outros jobs "verem" um
-# valor novo. Por isso o bootstrap comita e dá push do resultado; esse push
-# aciona um NOVO run deste mesmo workflow, já sem `vars.env` e com os valores
-# reais, e aí sim os jobs de treino executam normalmente. Continua sendo um
-# único arquivo, sem processo/workflow separado.
+# `apply-vars.sh` também roda dentro dos jobs de treino, mas só para resolver
+# os placeholders de arquivos que o Cloud Build lê como texto puro
+# (model-config.yaml, pipeline.py, os *.sql, os defaults de
+# .cloudbuild/*.yaml) — isso acontece só no workspace efêmero do runner,
+# nunca é commitado/dado push. `gcloud builds submit .` envia o diretório
+# como está naquele momento, resolvido ou não.
 #
-# Requer os secrets do repositório (usados pelos jobs de treino):
-#   - workload_identity_provider_gcp
-#   - service_account_gcp
+# Não há nenhum commit automático neste workflow — vars.env é um arquivo
+# normal, versionado como qualquer outro; editar um valor é só um commit seu,
+# sem exigir nenhuma permissão especial de push em .github/workflows/.
+#
+# Requer os secrets do repositório:
+#   - workload_identity_provider_gcp e service_account_gcp (autenticação via
+#     Workload Identity Federation)
 # ==============================================================================
 name: MLOps Model Training Deployment
 
 on:
   push:
-    branches:
-      - main
-      - __branch_name__
     tags:
       - 'v*'
   workflow_dispatch: {} # fallback manual (aba Actions → "Run workflow")
 
-env:
-  GCP_PROJECT_ID_MDL: __train_project_id__
-  GCP_PROJECT_ID_INF: __serving_project_id__
-  REGION: __region__
-  WORKERPOOL_MDL: __workerpool_dev__
-  WORKERPOOL_INF: __workerpool_prod__
-
 jobs:
   # --------------------------------------------------------------------------
-  # Verifica se ainda falta resolver os placeholders (existência de vars.env).
-  # Job próprio (em vez de hashFiles() direto no `if:` dos outros jobs) porque
-  # cada job começa num runner com workspace vazio — hashFiles() só é
-  # confiável depois de um checkout, então fazemos esse checkout aqui e
-  # repassamos o resultado via output.
+  # Lê vars.env uma vez e repassa os valores pros outros jobs via outputs.
+  # Precisa ser um job próprio (em vez de um step dentro de cada job) porque
+  # o `if:` de cada job é avaliado ANTES de qualquer step daquele job rodar —
+  # só um job anterior, com seu próprio checkout, consegue produzir um valor
+  # que os outros jobs usam no `if:`/`env` deles.
   # --------------------------------------------------------------------------
-  check-template-status:
-    name: Verifica se o template já foi instanciado
+  load-config:
+    name: Carrega configuração de vars.env
     runs-on: ubuntu-latest
     outputs:
-      has_vars_env: ${{ steps.check.outputs.found }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: check
-        run: |
-          if [ -f "vars.env" ]; then
-            echo "found=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "found=false" >> "$GITHUB_OUTPUT"
-          fi
-
-  # --------------------------------------------------------------------------
-  # Roda só quando vars.env existe. Aplica as variáveis em todo o
-  # repositório, remove as ferramentas de instanciação do template (inclusive
-  # vars.env) e comita/dá push do resultado.
-  # --------------------------------------------------------------------------
-  bootstrap-template:
-    name: Bootstrap Template (preenche variáveis a partir de vars.env)
-    needs: check-template-status
-    if: needs.check-template-status.outputs.has_vars_env == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+      project_id_mdl: ${{ steps.vars.outputs.project_id_mdl }}
+      project_id_inf: ${{ steps.vars.outputs.project_id_inf }}
+      region: ${{ steps.vars.outputs.region }}
+      workerpool_mdl: ${{ steps.vars.outputs.workerpool_mdl }}
+      workerpool_inf: ${{ steps.vars.outputs.workerpool_inf }}
+      branch_name: ${{ steps.vars.outputs.branch_name }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Remove documentação/ferramentas não essenciais à substituição
+      - name: Lê vars.env
+        id: vars
         run: |
-          # Removidos antes de aplicar as variáveis para não serem varridos
-          # pela checagem de placeholders dentro de apply-vars.sh (eles falam
-          # SOBRE o formato __PLACEHOLDER__ no texto, o que confundiria a
-          # checagem).
-          rm -f generate.sh vars.example.env README.md
+          set -a
+          # shellcheck disable=SC1091
+          source vars.env
+          set +a
+          echo "project_id_mdl=$TRAIN_PROJECT_ID" >> "$GITHUB_OUTPUT"
+          echo "project_id_inf=$SERVING_PROJECT_ID" >> "$GITHUB_OUTPUT"
+          echo "region=$REGION" >> "$GITHUB_OUTPUT"
+          echo "workerpool_mdl=$WORKERPOOL_DEV" >> "$GITHUB_OUTPUT"
+          echo "workerpool_inf=$WORKERPOOL_PROD" >> "$GITHUB_OUTPUT"
+          echo "branch_name=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
 
-      - name: Aplica as variáveis de vars.env em todo o repositório
-        run: |
-          chmod +x apply-vars.sh
-          ./apply-vars.sh vars.env .
-
-      - name: Remove vars.env e apply-vars.sh
-        run: rm -f vars.env apply-vars.sh
-
-      - name: Commit e push
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "chore: instancia template a partir de vars.env"
-          git push
-
-  # --------------------------------------------------------------------------
-  # Jobs de treino/promoção — só rodam quando o template já foi instanciado
-  # (vars.env não existe mais).
-  # --------------------------------------------------------------------------
   train-and-evaluate-mdl:
     name: Train and Evaluate Model (MDL)
-    needs: check-template-status
-    if: needs.check-template-status.outputs.has_vars_env == 'false' && github.ref == 'refs/heads/__branch_name__'
+    needs: load-config
+    if: github.ref == format('refs/heads/{0}', needs.load-config.outputs.branch_name)
     runs-on: arc-runner-set-default-gcp-caixagithub-prod
     permissions:
       contents: read
@@ -114,11 +76,16 @@ jobs:
       - name: Checkout do repositório
         uses: actions/checkout@v4
 
+      - name: Resolve placeholders no workspace (sem commitar/dar push)
+        run: |
+          chmod +x apply-vars.sh
+          ./apply-vars.sh vars.env .
+
       - name: Authenticate to Google Cloud
         id: auth
         uses: google-github-actions/auth@v3
         with:
-          project_id: ${{ env.GCP_PROJECT_ID_MDL }}
+          project_id: ${{ needs.load-config.outputs.project_id_mdl }}
           token_format: "access_token"
           workload_identity_provider: ${{ secrets.workload_identity_provider_gcp }}
           service_account: ${{ secrets.service_account_gcp }}
@@ -129,16 +96,16 @@ jobs:
       - name: Submit Model Training via Cloud Build Private Pool
         run: |
           gcloud builds submit \
-            --project=${{ env.GCP_PROJECT_ID_MDL }} \
+            --project=${{ needs.load-config.outputs.project_id_mdl }} \
             --config=.cloudbuild/dev.yaml \
-            --worker-pool="projects/${{ env.GCP_PROJECT_ID_MDL }}/locations/${{ env.REGION }}/workerPools/${{ env.WORKERPOOL_MDL }}" \
-            --region=${{ env.REGION }} \
+            --worker-pool="projects/${{ needs.load-config.outputs.project_id_mdl }}/locations/${{ needs.load-config.outputs.region }}/workerPools/${{ needs.load-config.outputs.workerpool_mdl }}" \
+            --region=${{ needs.load-config.outputs.region }} \
             .
 
   train-and-evaluate-inf:
     name: Train and Evaluate Model (INF)
-    needs: check-template-status
-    if: needs.check-template-status.outputs.has_vars_env == 'false' && startsWith(github.ref, 'refs/tags/v')
+    needs: load-config
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: arc-runner-set-default-gcp-caixagithub-prod
     permissions:
       contents: read
@@ -147,11 +114,16 @@ jobs:
       - name: Checkout do repositório
         uses: actions/checkout@v4
 
+      - name: Resolve placeholders no workspace (sem commitar/dar push)
+        run: |
+          chmod +x apply-vars.sh
+          ./apply-vars.sh vars.env .
+
       - name: Authenticate to Google Cloud
         id: auth
         uses: google-github-actions/auth@v3
         with:
-          project_id: ${{ env.GCP_PROJECT_ID_INF }}
+          project_id: ${{ needs.load-config.outputs.project_id_inf }}
           token_format: "access_token"
           workload_identity_provider: ${{ secrets.workload_identity_provider_gcp }}
           service_account: ${{ secrets.service_account_gcp }}
@@ -162,8 +134,8 @@ jobs:
       - name: Submit Model Training via Cloud Build Private Pool in INF Project
         run: |
           gcloud builds submit \
-            --project=${{ env.GCP_PROJECT_ID_INF }} \
+            --project=${{ needs.load-config.outputs.project_id_inf }} \
             --config=.cloudbuild/prod.yaml \
-            --worker-pool="projects/${{ env.GCP_PROJECT_ID_INF }}/locations/${{ env.REGION }}/workerPools/${{ env.WORKERPOOL_INF }}" \
-            --region=${{ env.REGION }} \
+            --worker-pool="projects/${{ needs.load-config.outputs.project_id_inf }}/locations/${{ needs.load-config.outputs.region }}/workerPools/${{ needs.load-config.outputs.workerpool_inf }}" \
+            --region=${{ needs.load-config.outputs.region }} \
             --substitutions="_TAG_NAME=${{ github.ref_name }}"

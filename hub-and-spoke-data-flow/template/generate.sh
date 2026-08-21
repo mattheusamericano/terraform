@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# generate.sh — instancia este template para um novo produto/projeto,
-# copiando os arquivos pra outra pasta e aplicando as variáveis (via
-# apply-vars.sh) nessa cópia.
-#
-# Fluxo local/manual — precisa de terminal com bash. Se você não tem git/bash
-# na sua máquina, veja a Opção 0 ("automática via GitHub") no README.md: dá
-# pra fazer tudo isso sem terminal nenhum, direto pelo navegador.
+# generate.sh — alternativa que "congela" os valores de vars.env nos
+# arquivos deste template, copiado pra outra pasta, em vez de deixar a
+# resolução acontecer em tempo de execução a cada push (uso recomendado —
+# ver README.md). Precisa de terminal com bash.
 #
 # Uso:
 #   cp vars.example.env vars.env   # edite vars.env com os dados reais
@@ -45,15 +42,18 @@ fi
 
 mkdir -p "$OUT_DIR"
 cp -R "$SCRIPT_DIR"/. "$OUT_DIR"/
-# Remove as ferramentas de instanciação do template — não fazem parte do
-# produto final gerado.
-rm -f "$OUT_DIR/generate.sh" "$OUT_DIR/apply-vars.sh" "$OUT_DIR/vars.example.env" "$OUT_DIR/README.md"
-# Não precisa remover o job "bootstrap-template" de deploy.yml: como não há
-# vars.env neste output, aquele job nunca é acionado (fica só inofensivo/sem
-# uso) — ver comentário no topo de .github/workflows/deploy.yml.
+# Remove só a documentação/instanciação em si — NÃO remove apply-vars.sh:
+# .github/workflows/deploy.yml chama ./apply-vars.sh e faz `source vars.env`
+# em toda execução (job load-config + jobs de treino), então os dois
+# precisam continuar existindo no repositório gerado, mesmo já "congelado".
+rm -f "$OUT_DIR/generate.sh" "$OUT_DIR/vars.example.env" "$OUT_DIR/README.md"
 
 echo "=== Aplicando variáveis de '$VARS_FILE' em '$OUT_DIR' ==="
 "$SCRIPT_DIR/apply-vars.sh" "$VARS_FILE" "$OUT_DIR"
+
+# deploy.yml espera o arquivo de variáveis com esse nome exato na raiz —
+# copia o arquivo de variáveis usado para dentro do output.
+cp "$VARS_FILE" "$OUT_DIR/vars.env"
 
 echo ""
 echo "=== Template gerado em: $OUT_DIR ==="
