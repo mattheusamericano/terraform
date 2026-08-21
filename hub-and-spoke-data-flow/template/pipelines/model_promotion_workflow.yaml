@@ -1,9 +1,19 @@
 # ==============================================================================
 # TEMPLATE — Cloud Workflow: promoção de modelo em produção
 # ==============================================================================
-# Este workflow coordena:
+# Este workflow, hoje, coordena só a parte de dados:
 # 1. Compilação e execução do pipeline de engenharia de dados (Dataform em Prod)
-# 2. Treinamento, registro e deploy de serventia do modelo (Vertex AI ML Pipeline em Prod)
+# 2. Publicação do listing correspondente no Analytics Hub
+#
+# `pipeline_root`, `template_uri` e `service_account` (abaixo, em
+# init_variables) são recebidos do .cloudbuild/prod.yaml mas NÃO são usados em
+# nenhum step deste workflow — ficam aqui só como exemplo/reserva para o dia
+# em que este workflow também disparar o pipeline de treino/deploy do Vertex
+# AI (usando o `pipeline.json` gerado a partir de `pipeline_root`/`template_uri`).
+# Hoje o treino via Vertex AI só acontece pelo `pipelines/pipeline.py`
+# chamado em `.cloudbuild/dev.yaml` (ambiente development) — não há, ainda,
+# nenhum step aqui nem em `prod.yaml` que rode o pipeline em produção. Ver
+# README.md ("O que este template NÃO conecta ainda").
 #
 # Os valores abaixo em `default(...)` são só um fallback para execução manual
 # (sem input) — o .cloudbuild/prod.yaml deste template SEMPRE passa os valores
@@ -21,6 +31,9 @@ main:
           - dataset_id: ${default(map.get(input, "dataset_id"), "__dataset_id__")}
           - location: ${default(map.get(input, "location"), "__region__")}
           - repository_id: ${default(map.get(input, "repository_id"), "__dataform_repository_id__")}
+          # Reservadas para uso futuro (disparo do pipeline Vertex AI a partir
+          # daqui) — nenhum step abaixo consome estas três hoje, ver nota no
+          # topo do arquivo.
           - pipeline_root: ${default(map.get(input, "pipeline_root"), "__serving_pipeline_root__")}
           - template_uri: ${default(map.get(input, "template_uri"), "__serving_template_uri__")}
           - service_account: ${default(map.get(input, "service_account"), "__serving_service_account__")}

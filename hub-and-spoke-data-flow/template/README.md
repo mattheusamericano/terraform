@@ -1,19 +1,29 @@
 # Template — Fluxo de CI/CD MLOps (Hub-and-Spoke)
 
-Versão genérica do fluxo de CI/CD usado em `hub-and-spoke-data-flow`: GitHub Actions dispara Cloud Build (`dev.yaml` para modelagem, `prod.yaml` para inferência), que treina/submete um pipeline Vertex AI e, em produção, implanta e executa um Cloud Workflow que roda Dataform e publica um listing no Analytics Hub. Use este template para replicar exatamente esse cenário em outro produto/modelo, sem copiar e adaptar manualmente os hardcodes de cada arquivo.
+Template genérico de um fluxo de CI/CD MLOps hub-and-spoke: GitHub Actions dispara Cloud Build (`dev.yaml` para modelagem, `prod.yaml` para inferência), que treina/submete um pipeline Vertex AI e, em produção, implanta e executa um Cloud Workflow que roda Dataform e publica um listing no Analytics Hub. Use este template para replicar exatamente esse cenário em outro produto/modelo, sem copiar e adaptar manualmente os hardcodes de cada arquivo.
 
-## O que este template cobre (e o que não cobre)
+> Este conteúdo é para viver na **raiz de um repositório próprio** (sem nenhuma pasta por cima) — todos os caminhos abaixo já são relativos à raiz do repositório.
 
-Cobre toda a **esteira de CI/CD**: gatilho do GitHub Actions, os dois arquivos do Cloud Build, o `model-config.yaml` que os alimenta e o Cloud Workflow de promoção para produção.
+## O que este template cobre
 
-**Não** inclui a lógica do modelo em si — `pipelines/pipeline.py` (compilação do pipeline Kubeflow/Vertex) e `src/*.sql` (queries de treino/avaliação/exportação BQML). Esses arquivos são específicos de cada modelo e você precisa escrevê-los seguindo o contrato que a esteira espera:
-- `pipelines/pipeline.py` deve aceitar `--submit` (chamado em `dev.yaml`) e ler `model-config.yaml` para saber projeto/dataset/bucket/service account do ambiente.
-- O pipeline compilado deve gerar `pipeline.json` na raiz de `pipeline_root` (é isso que `template_uri` em `model_promotion_workflow.yaml` espera encontrar).
+Cobre a **esteira de CI/CD completa** (gatilho do GitHub Actions, os dois arquivos do Cloud Build, o `model-config.yaml` que os alimenta e o Cloud Workflow de promoção para produção) **e** um pipeline de ML funcional de ponta a ponta como referência:
+- `pipelines/pipeline.py` — pipeline Kubeflow/Vertex AI já pronto (treino BQML XGBoost + avaliação + exportação + deploy com Canary Split num Endpoint privado). Já lê `model-config.yaml` para projeto/dataset/bucket/service account — normalmente você só mexe nisso se mudar a orquestração em si.
+- `src/train_model.sql`, `src/evaluate_model.sql`, `src/export_model.sql` — exemplo de treino BQML (classificador de risco de crédito). É o pedaço mais específico do negócio: troque a tabela de origem e as colunas de features/label pelo seu conjunto de dados real quando for além do pontapé inicial.
+
+Isso permite gerar o template e já rodar o fluxo de ponta a ponta contra um projeto de teste antes de trocar qualquer lógica de modelo.
+
+## O que este template NÃO conecta ainda
+
+O Cloud Workflow (`pipelines/model_promotion_workflow.yaml`) hoje só orquestra **Dataform + publicação do listing no Analytics Hub** — os steps do workflow chamam a API do Dataform e a do Analytics Hub diretamente, sem envolver `pipelines/pipeline.py` nem Vertex AI Pipelines em nenhum momento.
+
+As variáveis `pipeline_root`, `template_uri` e `service_account`, declaradas em `init_variables` do workflow (recebidas do `.cloudbuild/prod.yaml`, que já as monta a partir de `model-config.yaml`), **não são usadas em nenhum step** — ficam ali como exemplo/reserva para o dia em que este mesmo workflow também disparar o pipeline de treino/deploy do Vertex AI (usando o `pipeline.json` gerado por `pipelines/pipeline.py`). Não é bug nem esquecimento: é intencional, só não está em uso agora.
+
+Ou seja, no fluxo atual, treino via Vertex AI só acontece pelo `dev.yaml` (`pipelines/pipeline.py --environment=development --submit`). Não existe hoje, nem em `prod.yaml` nem no workflow, um step que rode o pipeline de treino/inferência em produção — só a parte de dados (Dataform → Analytics Hub) é automatizada em produção por enquanto.
 
 ## Estrutura
 
 ```text
-template/
+<raiz do repositório>/
 ├── README.md                              # este arquivo
 ├── vars.example.env                       # exemplo de variáveis a preencher
 ├── generate.sh                            # copia + preenche o template automaticamente
@@ -24,25 +34,31 @@ template/
 ├── .cloudbuild/
 │   ├── dev.yaml                           # build de modelagem (branch)
 │   └── prod.yaml                          # build de inferência (tags v*)
-└── pipelines/
-    └── model_promotion_workflow.yaml      # Cloud Workflow de promoção
+├── pipelines/
+│   ├── pipeline.py                        # pipeline Vertex AI (treino + deploy) — referência funcional
+│   └── model_promotion_workflow.yaml      # Cloud Workflow de promoção
+└── src/
+    ├── train_model.sql                    # exemplo de treino BQML — trocar pelo seu feature set
+    ├── evaluate_model.sql                 # exemplo de avaliação BQML
+    └── export_model.sql                   # exportação do modelo para o GCS
 ```
 
 ## Como usar
 
 ### Opção 1 — automática (`generate.sh`)
 
+A partir da raiz deste repositório:
+
 ```bash
-cd hub-and-spoke-data-flow/template
-cp vars.example.env vars.env      # edite vars.env com os dados reais do seu produto
-./generate.sh vars.env ../../meu-novo-produto
+cp vars.example.env vars.env      # edite vars.env com os dados reais do novo produto
+./generate.sh vars.env ../repositorio-do-novo-produto
 ```
 
-O script copia todos os arquivos do template para `../../meu-novo-produto`, substitui cada `__chave__` pelo valor definido em `vars.env` e avisa se sobrou algum placeholder sem preencher (comparado por nome — se você usar uma chave que não existe em nenhum arquivo do template, ou esquecer uma que existe, o aviso aparece). `vars.env` não é versionado por padrão nesta pasta (adicione ao `.gitignore` do repositório novo se ele guardar algo sensível) — o `vars.example.env` aqui é só o modelo.
+O script copia todos os arquivos deste repositório para `../repositorio-do-novo-produto`, substitui cada `__chave__` pelo valor definido em `vars.env` e avisa se sobrou algum placeholder sem preencher (comparado por nome — se você usar uma chave que não existe em nenhum arquivo do template, ou esquecer uma que existe, o aviso aparece). `vars.env` não é versionado por padrão (adicione ao `.gitignore` se ele guardar algo sensível) — o `vars.example.env` é só o modelo.
 
 ### Opção 2 — manual
 
-Copie a pasta inteira para a raiz do novo repositório e substitua manualmente cada `__chave__` (em minúsculo, ex.: `__region__`) pelo valor correspondente. A tabela abaixo lista todos os placeholders usados.
+Sem usar o script: substitua manualmente, direto neste repositório, cada `__chave__` (em minúsculo, ex.: `__region__`) pelo valor correspondente. A tabela abaixo lista todos os placeholders usados.
 
 ## Variáveis do template
 
@@ -50,20 +66,21 @@ Copie a pasta inteira para a raiz do novo repositório e substitua manualmente c
 |---|---|---|---|
 | `__product__` | `PRODUCT` | `model-config.yaml` | `credpj` |
 | `__domain__` | `DOMAIN` | `model-config.yaml` | `rsk` |
-| `__endpoint_name__` | `ENDPOINT_NAME` | `model-config.yaml` | `endpoint-credpj-risk` |
-| `__model_id__` | `MODEL_ID` | `model-config.yaml` | `credpj_risk_xgb_v1` |
-| `__pipeline_name__` | `PIPELINE_NAME` | `model-config.yaml` | `credpj-risk-xgb-pipeline` |
-| `__dataset_id__` | `DATASET_ID` | `model-config.yaml`, `model_promotion_workflow.yaml` | `served` |
-| `__models_dataset__` | `MODELS_DATASET` | `.cloudbuild/dev.yaml` | `models` |
-| `__region__` | `REGION` | todos | `southamerica-east1` |
-| `__train_project_id__` | `TRAIN_PROJECT_ID` | `model-config.yaml`, `deploy.yml` | `prj-meuproduto-mdl-prd` |
+| `__endpoint_name__` | `ENDPOINT_NAME` | `model-config.yaml`, `pipeline.py` (fallback) | `endpoint-credpj-risk` |
+| `__model_id__` | `MODEL_ID` | `model-config.yaml`, `src/*.sql` | `credpj_risk_xgb_v1` |
+| `__pipeline_name__` | `PIPELINE_NAME` | `model-config.yaml`, `pipeline.py` (fallback) | `credpj-risk-xgb-pipeline` |
+| `__dataset_id__` | `DATASET_ID` | `model-config.yaml`, `model_promotion_workflow.yaml`, `pipeline.py` (fallback) | `served` |
+| `__models_dataset__` | `MODELS_DATASET` | `.cloudbuild/dev.yaml`, `src/*.sql` | `models` |
+| `__region__` | `REGION` | todos, inclusive `pipeline.py` | `southamerica-east1` |
+| `__train_project_id__` | `TRAIN_PROJECT_ID` | `model-config.yaml`, `deploy.yml`, `pipeline.py` (fallback) | `prj-meuproduto-mdl-prd` |
 | `__serving_project_id__` | `SERVING_PROJECT_ID` | `model-config.yaml`, `deploy.yml`, `model_promotion_workflow.yaml` | `prj-meuproduto-inf-prd` |
 | `__hub_project_id__` | `HUB_PROJECT_ID` | `model_promotion_workflow.yaml` | `prj-hub-poc` |
-| `__train_pipeline_root__` | `TRAIN_PIPELINE_ROOT` | `model-config.yaml` | `gs://bucket-.../pipeline_root` |
-| `__serving_pipeline_root__` | `SERVING_PIPELINE_ROOT` | `model-config.yaml`, `model_promotion_workflow.yaml` | `gs://bucket-.../pipeline_root` |
-| `__serving_template_uri__` | `SERVING_TEMPLATE_URI` | `model_promotion_workflow.yaml` | `gs://bucket-.../pipeline_root/pipeline.json` |
-| `__serving_bucket_name__` | `SERVING_BUCKET_NAME` | `model_promotion_workflow.yaml` | `bucket-data-meuproduto-inf` |
-| `__train_service_account__` | `TRAIN_SERVICE_ACCOUNT` | `model-config.yaml` | `sa-vertex-ai-pipeline@...` |
+| `__train_pipeline_root__` | `TRAIN_PIPELINE_ROOT` | `model-config.yaml`, `pipeline.py` | `gs://bucket-.../pipeline_root` |
+| `__train_models_export_uri__` | `TRAIN_MODELS_EXPORT_URI` | `src/export_model.sql` | `gs://bucket-.../models/meuproduto_risk_xgb_v1` |
+| `__serving_pipeline_root__` | `SERVING_PIPELINE_ROOT` | `model-config.yaml` (exigido pelo schema), `model_promotion_workflow.yaml` (não usado) | `gs://bucket-.../pipeline_root` |
+| `__serving_template_uri__` | `SERVING_TEMPLATE_URI` | `model_promotion_workflow.yaml` (não usado) | `gs://bucket-.../pipeline_root/pipeline.json` |
+| `__serving_bucket_name__` | `SERVING_BUCKET_NAME` | `model_promotion_workflow.yaml` (não usado) | `bucket-data-meuproduto-inf` |
+| `__train_service_account__` | `TRAIN_SERVICE_ACCOUNT` | `model-config.yaml`, `pipeline.py` (fallback) | `sa-vertex-ai-pipeline@...` |
 | `__serving_service_account__` | `SERVING_SERVICE_ACCOUNT` | `model-config.yaml`, `model_promotion_workflow.yaml` | `sa-vertex-ai-pipeline@...` |
 | `__artifact_registry_index_url__` | `ARTIFACT_REGISTRY_INDEX_URL` | `.cloudbuild/dev.yaml`, `.cloudbuild/prod.yaml` | URL do índice PyPI privado |
 | `__workflow_name__` | `WORKFLOW_NAME` | `.cloudbuild/prod.yaml` | `meuproduto-model-promotion-workflow` |
@@ -85,8 +102,9 @@ Ou seja: `__workflow_name__` você preenche uma vez ao adotar o template (via `g
 
 ## Checklist depois de gerar
 
-1. Escreva `pipelines/pipeline.py` e `src/*.sql` com a lógica do seu modelo.
-2. Confira `model-config.yaml` gerado — principalmente os buckets e service accounts, que costumam ter nomes com pequenas variações reais do que está no exemplo.
-3. Configure os secrets do repositório novo: `workload_identity_provider_gcp` e `service_account_gcp` (usados por `deploy.yml` para autenticar via Workload Identity Federation).
-4. Confirme que os Worker Pools privados (`WORKERPOOL_DEV`/`WORKERPOOL_PROD`) e o Cloud Workflow (`WORKFLOW_NAME`) já existem nos projetos de destino, ou provisione-os antes do primeiro push/tag — este template não os cria, só os referencia.
-5. `git push` na branch configurada em `BRANCH_NAME` dispara o job de modelagem; uma tag `v*` dispara o job de inferência/promoção.
+1. Confira `model-config.yaml` gerado — principalmente os buckets e service accounts, que costumam ter nomes com pequenas variações reais do que está no exemplo.
+2. Rode o fluxo de ponta a ponta como veio (sem trocar nada em `pipelines/pipeline.py`/`src/*.sql`) contra um projeto de teste — é um pipeline funcional de treino BQML + deploy, serve pra validar que a esteira de CI/CD toda está correta antes de mexer em lógica de modelo.
+3. Quando for além do pontapé inicial: troque `src/train_model.sql` (e `evaluate_model.sql`) pela tabela e pelas colunas de features/label do seu modelo real. `pipelines/pipeline.py` (orquestração, deploy, Canary Split) normalmente não precisa mudar.
+4. Configure os secrets do repositório novo: `workload_identity_provider_gcp` e `service_account_gcp` (usados por `deploy.yml` para autenticar via Workload Identity Federation).
+5. Confirme que os Worker Pools privados (`WORKERPOOL_DEV`/`WORKERPOOL_PROD`) e o Cloud Workflow (`WORKFLOW_NAME`) já existem nos projetos de destino, ou provisione-os antes do primeiro push/tag — este template não os cria, só os referencia.
+6. `git push` na branch configurada em `BRANCH_NAME` dispara o job de modelagem; uma tag `v*` dispara o job de inferência/promoção.

@@ -74,8 +74,10 @@ done
 
 echo "=== Verificando se restaram placeholders não preenchidos ==="
 # Exclui padrões legítimos que também batem com __algo__ mas não são
-# placeholders deste template (ex.: __pycache__ em .gcloudignore/.gitignore).
-if grep -rn '__[a-z0-9_]*__' "$OUT_DIR" 2>/dev/null | grep -v -E '__pycache__|__init__'; then
+# placeholders deste template: dunders do Python (__file__, __main__, ...)
+# e __pycache__/.gitignore.
+PY_DUNDERS='__pycache__|__init__|__main__|__file__|__name__|__doc__|__dict__|__version__|__all__|__class__|__module__'
+if grep -rn '__[a-z0-9_]*__' "$OUT_DIR" 2>/dev/null | grep -v -E "$PY_DUNDERS"; then
   echo ""
   echo "AVISO: os placeholders acima não foram substituídos — confira se todas"
   echo "as chaves usadas no template têm uma linha correspondente em '$VARS_FILE'."
@@ -86,9 +88,10 @@ fi
 echo ""
 echo "=== Template gerado em: $OUT_DIR ==="
 echo "Próximos passos:"
-echo "  1. Adicione pipelines/pipeline.py e src/*.sql com a lógica do seu"
-echo "     modelo (não fazem parte deste template)."
-echo "  2. Configure os secrets do GitHub: workload_identity_provider_gcp e"
+echo "  1. Confira model-config.yaml, .cloudbuild/dev.yaml e .cloudbuild/prod.yaml"
+echo "     gerados antes do primeiro push."
+echo "  2. pipelines/pipeline.py e src/*.sql já vieram como um pipeline BQML"
+echo "     funcional (referência/pontapé inicial) — dá pra rodar como está"
+echo "     contra um projeto de teste antes de trocar a lógica do modelo."
+echo "  3. Configure os secrets do GitHub: workload_identity_provider_gcp e"
 echo "     service_account_gcp."
-echo "  3. Revise .cloudbuild/dev.yaml, .cloudbuild/prod.yaml e"
-echo "     model-config.yaml gerados antes do primeiro push."
