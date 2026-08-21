@@ -1,0 +1,79 @@
+name: MLOps Model Training Deployment
+
+on:
+  push:
+    branches: [credpj-model]
+    tags:
+      - 'v*'
+
+env:
+  GCP_PROJECT_ID_MDL: prj-subscriber-poc
+  GCP_PROJECT_ID_INF: prj-publisher-poc
+  REGION: southamerica-east1
+  WORKERPOOL_MDL: workerpool-poc-des
+  WORKERPOOL_INF: workerpool-pubs-des
+
+jobs:
+  train-and-evaluate-mdl:
+    name: Train and Evaluate Model (MDL)
+    runs-on: arc-runner-set-default-gcp-caixagithub-prod
+    if: github.ref == 'refs/heads/credpj-model'
+    permissions:
+      contents: read
+      id-token: write   # necessário para Workload Identity Federation
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID_MDL }}
+          token_format: "access_token"
+          workload_identity_provider: ${{ secrets.workload_identity_provider_gcp }}
+          service_account: ${{ secrets.service_account_gcp }}
+
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Submit Model Training via Cloud Build Private Pool
+        run: |
+          gcloud builds submit \
+            --project=${{ env.GCP_PROJECT_ID_MDL }} \
+            --config=.cloudbuild/dev.yaml \
+            --worker-pool="projects/${{ env.GCP_PROJECT_ID_MDL }}/locations/${{ env.REGION }}/workerPools/${{ env.WORKERPOOL_MDL }}" \
+            --region=${{ env.REGION }} \
+            .
+
+  train-and-evaluate-inf:
+    name: Train and Evaluate Model (INF)
+    runs-on: arc-runner-set-default-gcp-caixagithub-prod
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID_INF }}
+          token_format: "access_token"
+          workload_identity_provider: ${{ secrets.workload_identity_provider_gcp }}
+          service_account: ${{ secrets.service_account_gcp }}
+
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Submit Model Training via Cloud Build Private Pool in INF Project
+        run: |
+          gcloud builds submit \
+            --project=${{ env.GCP_PROJECT_ID_INF }} \
+            --config=.cloudbuild/prod.yaml \
+            --worker-pool="projects/${{ env.GCP_PROJECT_ID_INF }}/locations/${{ env.REGION }}/workerPools/${{ env.WORKERPOOL_INF }}" \
+            --region=${{ env.REGION }} \
+            --substitutions="_TAG_NAME=${{ github.ref_name }}" 

@@ -1,0 +1,56 @@
+variables:
+  product: &product credpj
+  domain: &domain rsk
+  endpoint_name: &endpoint_name endpoint-credpj-risk
+
+  region: &region southamerica-east1
+
+  train_project: &train_project prj-subscriber-poc
+  serving_project: &serving_project prj-publisher-poc
+
+  train_bucket: &train_bucket gs://bucket-data-subs-des/pipeline_root
+  serving_bucket: &serving_bucket gs://bucket-data-pub-des/pipeline_root
+
+  train_service_account: &train_sa sa-vertex-ai-pipeline@prj-subscriber-poc.iam.gserviceaccount.com
+  serving_service_account: &serving_sa sa-vertex-ai-pipeline@prj-publisher-poc.iam.gserviceaccount.com
+
+product: *product
+domain: *domain
+
+model_serving:
+  endpoint_name: *endpoint_name
+  region: *region
+
+  environments:
+    production:
+      deployments:
+        - model_id: "credpj_risk_xgb_v1"
+          version_id: "1"
+          traffic_percentage: 100
+          machine_type: "n1-standard-4"
+          min_replica_count: 1
+          max_replica_count: 1
+
+feature_store:
+  enable_online_serving: true
+  feature_view_sync: "DAILY"
+
+model_training:
+  type: "vertex_pipelines"
+  language: "sql"
+  framework: "bqml"
+  source_dir: "src"
+  pipeline_name: "credpj-risk-xgb-pipeline"
+
+  environments:
+    development:
+      project_id: *train_project
+      dataset_id: "served"
+      pipeline_root: *train_bucket
+      service_account: *train_sa
+
+    production:
+      project_id: *serving_project
+      dataset_id: "served"
+      pipeline_root: *serving_bucket
+      service_account: *serving_sa

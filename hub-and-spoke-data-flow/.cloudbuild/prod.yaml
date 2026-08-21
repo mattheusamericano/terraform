@@ -1,0 +1,113 @@
+steps:
+  # -------------------------------------------------------------
+  # 🏛️ Passo 3: Implantar o Cloud Workflow no Spoke de Produção
+  # -------------------------------------------------------------
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:latest'
+    id: 'deploy-cloud-workflow'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+      
+        pip3 install --index-url https://southamerica-east1-python.pkg.dev/prj-artifact-services-prd/acr-artifact-prd-001/simple/ pyyaml --quiet --break-system-packages 2>/dev/null
+        python3 -c "
+        import yaml
+        import subprocess
+        
+        # Carrega configurações de produção
+        with open('model-config.yaml', 'r') as f:
+            config = yaml.safe_load(f)
+            
+        prod_config = config['model_training']['environments']['production']
+        project_id = prod_config['project_id']
+        service_account = prod_config['service_account']
+        
+        workflow_name = 'credpj-model-promotion-workflow'
+        source_file = 'pipelines/model_promotion_workflow.yaml'
+        location = 'southamerica-east1'
+        
+        print(f'=== Implantando Cloud Workflow {workflow_name} no projeto {project_id} ===')
+        # Executa o deploy do workflow usando a Service Account do spoke de produção
+        cmd = [
+            'gcloud', 'workflows', 'deploy', workflow_name,
+            f'--source={source_file}',
+            f'--location={location}',
+            f'--project={project_id}',
+            f'--service-account={service_account}'
+        ]
+        subprocess.run(cmd, check=True)
+        "
+
+  # -------------------------------------------------------------
+  # ⚡ Passo 4: Executar o Workflow de forma Assíncrona e Encerrar
+  # -------------------------------------------------------------
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:latest'
+    id: 'trigger-cloud-workflow-async'
+    entrypoint: 'sh'
+    env:
+      - 'TAG_NAME=$_TAG_NAME'
+    args:
+      - '-c'
+      - |
+        pip3 install --index-url https://southamerica-east1-python.pkg.dev/prj-artifact-services-prd/acr-artifact-prd-001/simple/ pyyaml --quiet --break-system-packages 2>/dev/null
+        python3 -c "
+        import yaml
+        import json
+        import subprocess
+        import os
+        
+        # Carrega configurações de produção
+        with open('model-config.yaml', 'r') as f:
+            config = yaml.safe_load(f)
+            
+        prod_config = config['model_training']['environments']['production']
+        project_id = prod_config['project_id']
+        dataset_id = prod_config['dataset_id']
+        pipeline_root = prod_config['pipeline_root']
+        service_account = prod_config['service_account']
+        
+        tag_name = os.getenv('TAG_NAME', 'v1.0.0') # Fallback se rodar manualmente
+        template_uri = f'{pipeline_root}/pipeline.json'
+        
+        # Monta os inputs que o Workflow espera
+        workflow_inputs = {
+            'project_id': project_id,
+            'dataset_id': dataset_id,
+            'location': 'southamerica-east1',
+            'repository_id': 'df-repo-pub-des',
+            'pipeline_root': pipeline_root,
+            'template_uri': template_uri,
+            'service_account': service_account,
+            'dataform_service_account': f'sa-df-pub-des@{project_id}.iam.gserviceaccount.com',
+            'git_commitish': 'dataform-risco-pub',
+            'trigger_id': ''  # Desativado pois o deploy agora é nativo ao final do pipeline da Vertex
+        }
+        
+        workflow_name = 'credpj-model-promotion-workflow'
+        location = 'southamerica-east1'
+        inputs_json = json.dumps(workflow_inputs)
+        
+        print(f'=== Executando o Cloud Workflow {workflow_name} de forma ASSÍNCRONA ===')
+        print(f'Inputs: {inputs_json}')
+        
+        cmd = [
+            'gcloud', 'workflows', 'run', workflow_name,
+            f'--location={location}',
+            f'--project={project_id}',
+            f'--data={inputs_json}'
+        ]
+        
+        # Executa de forma assíncrona (não espera o término da execução longa de treino/dataform)
+        subprocess.run(cmd, check=True)
+        print('=== Cloud Workflow inicializado com SUCESSO! Finalizando o step do Cloud Build. ===')
+        "
+
+substitutions:
+  _TAG_NAME: 'v1.0.0'
+
+options:
+  logging: 'CLOUD_LOGGING_ONLY'
+  env:
+    - 'no_proxy=metadata,metadata.google.internal,169.254.169.254,googleapis.com,*.googleapis.com,gcr.io,pkg.dev'
+    - 'NO_PROXY=metadata,metadata.google.internal,169.254.169.254,googleapis.com,*.googleapis.com,gcr.io,pkg.dev'
+ 

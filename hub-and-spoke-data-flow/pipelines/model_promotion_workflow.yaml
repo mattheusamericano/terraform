@@ -1,0 +1,132 @@
+# ==============================================================================
+# 🏛️ Coffer Bank - MLOps Production Serving Workflow
+# ==============================================================================
+# Este workflow coordena:
+# 1. Compilação e execução do pipeline de engenharia de dados (Dataform em Prod)
+# 2. Treinamento, registro e deploy de serventia do modelo (Vertex AI ML Pipeline em Prod)
+# ==============================================================================
+
+main:
+  params: [input]
+  steps:
+    - init_variables:
+        assign:
+          - project_id: ${default(map.get(input, "project_id"), "prj-publisher-poc")}
+          - project_id_hub: ${default(map.get(input, "project_id_hub"), "prj-hub-poc")}
+          - dataset_id: ${default(map.get(input, "dataset_id"), "served")}
+          - location: ${default(map.get(input, "location"), "southamerica-east1")}
+          - repository_id: ${default(map.get(input, "repository_id"), "df-repo-pub-des")}
+          - pipeline_root: ${default(map.get(input, "pipeline_root"), "gs://gs://bucket-data-pub-des/pipeline_root")}
+          - template_uri: ${default(map.get(input, "template_uri"), "gs://bucket-data-pub-des/pipeline_root/pipeline.json")}
+          - service_account: ${default(map.get(input, "service_account"), "sa-vertex-ai-pipeline@prj-publisher-poc.iam.gserviceaccount.com")}
+          - dataform_service_account: ${default(map.get(input, "dataform_service_account"), "sa-df-pub-des@" + project_id + ".iam.gserviceaccount.com")}
+          - git_commitish: ${default(map.get(input, "git_commitish"), "dataform-risco-pub")}
+          - bucket_name: ${"bucket-data-pub-des"}
+          # --- Variáveis do Analytics Hub ---
+          - ah_location: ${default(map.get(input, "ah_location"), "southamerica-east1")}
+          - data_exchange_id: ${default(map.get(input, "data_exchange_id"), "exchange_hub_poc_19ef5e9403a")}
+          - listing_id: ${default(map.get(input, "listing_id"), "listing_workflows")}
+
+
+    # ==========================================================================
+    # 💾 ETAPA 1: ORQUESTRAÇÃO DE DADOS (DATAFORM)
+    # ==========================================================================
+    - compile_dataform:
+        try:
+          call: http.post
+          args:
+            url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/compilationResults"}
+            auth:
+              type: OAuth2
+            body:
+              gitCommitish: ${git_commitish}
+          result: compile_res
+        retry: ${http.default_retry}
+
+    - set_compilation_name:
+        assign:
+          - compilation_name: ${compile_res.body.name}
+
+    - start_dataform_invocation:
+        try:
+          call: http.post
+          args:
+            url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/workflowInvocations"}
+            auth:
+              type: OAuth2
+            body:
+              compilationResult: ${compilation_name}
+              invocationConfig:
+                serviceAccount: ${dataform_service_account}
+          result: invocation_res
+        retry: ${http.default_retry}
+
+    - get_invocation_name:
+        assign:
+          - invocation_name: ${invocation_res.body.name}
+
+    - poll_dataform_status:
+        try:
+          call: http.get
+          args:
+            url: ${"https://dataform.googleapis.com/v1beta1/" + invocation_name}
+            auth:
+              type: OAuth2
+          result: status_res
+        retry: ${http.default_retry}
+
+    - check_dataform_state:
+        switch:
+          - condition: ${status_res.body.state == "SUCCEEDED"}
+            next: publish_to_analytics_hub
+          - condition: ${status_res.body.state == "FAILED" or status_res.body.state == "CANCELLED"}
+            next: dataform_failed
+        next: wait_and_poll_dataform
+
+    - wait_and_poll_dataform:
+        call: sys.sleep
+        args:
+          seconds: 15
+        next: poll_dataform_status
+
+    - dataform_failed:
+        raise: ${"Dataform invocation failed with state " + status_res.body.state}
+
+    # ==========================================================================
+    # 📊 ETAPA 2: PUBLICAR NO ANALYTICS HUB (FINAL DA PIPELINE)
+    # ==========================================================================
+    - publish_to_analytics_hub:
+        try:
+          call: http.post
+          args:
+            # Atenção: Usando ah_location para garantir a região correta da Exchange
+            url: ${"https://analyticshub.googleapis.com/v1/projects/" + project_id_hub + "/locations/" + ah_location + "/dataExchanges/" + data_exchange_id + "/listings?listingId=" + listing_id}
+            auth:
+              type: OAuth2
+            body:
+              displayName: ${"Listing para o dataset " + dataset_id}
+              description: "Listing gerado e atualizado via Cloud Workflows"
+              bigqueryDataset:
+                dataset: ${"projects/" + project_id + "/datasets/" + dataset_id}
+          result: ah_listing_res
+        except:
+          as: e
+          steps:
+            - check_if_listing_exists:
+                switch:
+                  - condition: ${e.code == 409}
+                    next: listing_already_exists
+                next: raise_ah_error
+            - raise_ah_error:
+                raise: ${"Erro ao publicar no Analytics Hub - " + json.encode_to_string(e)}
+        next: success_new_listing
+
+    # ==========================================================================
+    # ✅ RETORNOS FINAIS DA PIPELINE
+    # ==========================================================================
+    - listing_already_exists:
+        return: "Aviso: A execução do Dataform foi concluída, mas a etapa do Analytics Hub identificou que o listing já existe (Erro 409). Pipeline finalizada."
+
+    - success_new_listing:
+        return: "Sucesso: Dataform executado e novo listing criado no Analytics Hub!"
+
