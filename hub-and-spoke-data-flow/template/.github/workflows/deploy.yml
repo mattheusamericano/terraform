@@ -53,20 +53,20 @@ jobs:
       - name: Lê vars.env
         id: vars
         run: |
-          # Remove \r de fim de linha (vars.env salvo com CRLF/Windows quebra
-          # o `source`: uma linha em branco vira um "$'\r'" que o bash tenta
-          # rodar como comando).
-          sed -i 's/\r$//' vars.env
-          set -a
-          # shellcheck disable=SC1091
-          source vars.env
-          set +a
-          echo "project_id_mdl=$TRAIN_PROJECT_ID" >> "$GITHUB_OUTPUT"
-          echo "project_id_inf=$SERVING_PROJECT_ID" >> "$GITHUB_OUTPUT"
-          echo "region=$REGION" >> "$GITHUB_OUTPUT"
-          echo "workerpool_mdl=$WORKERPOOL_DEV" >> "$GITHUB_OUTPUT"
-          echo "workerpool_inf=$WORKERPOOL_PROD" >> "$GITHUB_OUTPUT"
-          echo "branch_name=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          # Extrai cada chave direto do arquivo (grep/cut), em vez de usar
+          # `source` (que executa o arquivo inteiro como código bash — uma
+          # única linha mal formada em qualquer lugar do arquivo derruba o
+          # job inteiro com um erro difícil de entender). Também tolera \r
+          # de fim de linha (CRLF/Windows) sem precisar normalizar o arquivo.
+          get_var() {
+            grep -E "^$1=" vars.env | tail -n1 | cut -d'=' -f2- | tr -d '\r'
+          }
+          echo "project_id_mdl=$(get_var TRAIN_PROJECT_ID)" >> "$GITHUB_OUTPUT"
+          echo "project_id_inf=$(get_var SERVING_PROJECT_ID)" >> "$GITHUB_OUTPUT"
+          echo "region=$(get_var REGION)" >> "$GITHUB_OUTPUT"
+          echo "workerpool_mdl=$(get_var WORKERPOOL_DEV)" >> "$GITHUB_OUTPUT"
+          echo "workerpool_inf=$(get_var WORKERPOOL_PROD)" >> "$GITHUB_OUTPUT"
+          echo "branch_name=$(get_var BRANCH_NAME)" >> "$GITHUB_OUTPUT"
 
   train-and-evaluate-mdl:
     name: Train and Evaluate Model (MDL)
