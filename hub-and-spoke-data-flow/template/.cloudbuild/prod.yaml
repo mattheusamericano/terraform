@@ -1,34 +1,28 @@
 # ==============================================================================
-# Cloud Build - Ambiente de Produção / Inferência (INF)
+# TEMPLATE — Cloud Build: Ambiente de Produção / Inferência (INF)
 # ==============================================================================
-# Acionado pela publicação de tags `v*` (ver .github/workflows/deploy.yml), que
-# também repassa `_TAG_NAME=<tag>` via `--substitutions`. O projeto de destino
-# vem de `$PROJECT_ID` (variável nativa do Cloud Build, definida pela flag
-# `--project` do `gcloud builds submit`); os parâmetros específicos do
-# ambiente de produção do modelo (project_id do modelo, dataset, pipeline_root,
-# service account) vêm de `model-config.yaml`, não deste arquivo.
+# O projeto de destino vem de $PROJECT_ID (variável nativa do Cloud Build,
+# definida pela flag --project de quem dispara o build — ver deploy.yml).
+# Os parâmetros do ambiente de produção do modelo (project_id, dataset,
+# pipeline_root, service_account) vêm de model-config.yaml, não deste arquivo.
 #
-# Os demais valores (nome/arquivo do Workflow, repositório e commitish do
-# Dataform, prefixo da SA do Dataform, região, índice do PyPI privado) são
-# declarados em `substitutions:` abaixo e podem ser sobrescritos por build sem
-# editar este arquivo, ex.:
+# Os demais valores são declarados em `substitutions:` abaixo. Preencha os
+# defaults com os dados do seu produto (ou use generate.sh + vars.example.env
+# para preencher tudo de uma vez). Também podem ser sobrescritos por build,
+# sem editar este arquivo:
 #   gcloud builds submit --config=.cloudbuild/prod.yaml \
-#     --substitutions=_TAG_NAME=v2.0.0,_DATAFORM_GIT_COMMITISH=outra-branch .
-#
-# Ver README.md (seção "Fluxo de CI/CD") para a divisão de responsabilidades
-# entre `substitutions:` (parâmetros de build/CI) e `model-config.yaml`
-# (configuração declarativa do ciclo de vida do modelo).
+#     --substitutions=_TAG_NAME=v2.0.0 .
 # ==============================================================================
 
 substitutions:
   _TAG_NAME: 'v1.0.0'
-  _REGION: 'southamerica-east1'
-  _WORKFLOW_NAME: 'credpj-model-promotion-workflow'
+  _REGION: '__region__'
+  _WORKFLOW_NAME: '__workflow_name__'
   _WORKFLOW_SOURCE_FILE: 'pipelines/model_promotion_workflow.yaml'
-  _DATAFORM_REPOSITORY_ID: 'df-repo-pub-des'
-  _DATAFORM_GIT_COMMITISH: 'dataform-risco-pub'
-  _DATAFORM_SA_PREFIX: 'sa-df-pub-des'
-  _ARTIFACT_REGISTRY_INDEX_URL: 'https://southamerica-east1-python.pkg.dev/prj-artifact-services-prd/acr-artifact-prd-001/simple/'
+  _DATAFORM_REPOSITORY_ID: '__dataform_repository_id__'
+  _DATAFORM_GIT_COMMITISH: '__dataform_git_commitish__'
+  _DATAFORM_SA_PREFIX: '__dataform_sa_prefix__'
+  _ARTIFACT_REGISTRY_INDEX_URL: '__artifact_registry_index_url__'
 
 steps:
   # -------------------------------------------------------------

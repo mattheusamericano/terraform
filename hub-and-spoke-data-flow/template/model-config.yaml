@@ -1,0 +1,62 @@
+# ==============================================================================
+# TEMPLATE — model-config.yaml
+# Configuração declarativa do ciclo de vida do modelo (treino + serving).
+# Preencha todo campo entre duplo underscore com os dados do seu produto/modelo —
+# ver README.md deste template (ou use generate.sh + vars.example.env).
+# ==============================================================================
+variables:
+  product: &product __product__ # ex.: credpj
+  domain: &domain __domain__ # ex.: rsk
+  endpoint_name: &endpoint_name __endpoint_name__ # ex.: endpoint-credpj-risk
+
+  region: &region __region__ # ex.: southamerica-east1
+
+  train_project: &train_project __train_project_id__ # projeto (spoke) de treino/modelagem
+  serving_project: &serving_project __serving_project_id__ # projeto (spoke) de serving/inferência
+
+  train_bucket: &train_bucket __train_pipeline_root__ # ex.: gs://bucket-data-subs-des/pipeline_root
+  serving_bucket: &serving_bucket __serving_pipeline_root__ # ex.: gs://bucket-data-pub-des/pipeline_root
+
+  train_service_account: &train_sa __train_service_account__
+  serving_service_account: &serving_sa __serving_service_account__
+
+product: *product
+domain: *domain
+
+model_serving:
+  endpoint_name: *endpoint_name
+  region: *region
+
+  environments:
+    production:
+      deployments:
+        - model_id: "__model_id__" # ex.: credpj_risk_xgb_v1
+          version_id: "1"
+          traffic_percentage: 100
+          machine_type: "n1-standard-4"
+          min_replica_count: 1
+          max_replica_count: 1
+
+feature_store:
+  enable_online_serving: true
+  feature_view_sync: "DAILY"
+
+model_training:
+  type: "vertex_pipelines"
+  language: "sql"
+  framework: "bqml"
+  source_dir: "src"
+  pipeline_name: "__pipeline_name__" # ex.: credpj-risk-xgb-pipeline
+
+  environments:
+    development:
+      project_id: *train_project
+      dataset_id: "__dataset_id__" # ex.: served
+      pipeline_root: *train_bucket
+      service_account: *train_sa
+
+    production:
+      project_id: *serving_project
+      dataset_id: "__dataset_id__"
+      pipeline_root: *serving_bucket
+      service_account: *serving_sa

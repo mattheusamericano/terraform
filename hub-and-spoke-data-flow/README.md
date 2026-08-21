@@ -68,5 +68,43 @@ O ciclo de entrega e treinamento do modelo de crédito PJ é totalmente automati
   2. Compila e faz upload do template do pipeline da Vertex AI para o GCS.
   3. Atualiza e aciona o Cloud Workflow (`credpj-model-promotion-workflow`) de forma assíncrona.
   4. O workflow executa as validações analíticas de Dataform, inicia o treinamento produtivo e aplica o Canary Deployment de forma totalmente automatizada.
- 
-* teste
+
+### 3. Variáveis do Cloud Build (`.cloudbuild/dev.yaml` e `.cloudbuild/prod.yaml`)
+
+Nenhum dos dois arquivos tem projeto, região, nome de dataset, nome do Workflow etc. mais hardcoded direto no meio do script — tudo isso agora é declarado no bloco `substitutions:` no topo de cada arquivo, com o mesmo valor que já estava em uso hoje como default (ou seja, rodar sem passar nada continua se comportando exatamente como antes).
+
+**Projeto:** não é uma substitution — vem de `$PROJECT_ID`, variável nativa do Cloud Build, que é sempre igual ao valor passado em `--project` no `gcloud builds submit` (é isso que já faz `dev.yaml` rodar no projeto de modelagem e `prod.yaml` no de inferência, conforme `.github/workflows/deploy.yml`).
+
+**`.cloudbuild/dev.yaml`**
+
+| Variável | Default | Para que serve |
+|---|---|---|
+| `_REGION` | `southamerica-east1` | Região usada na criação do dataset e (implicitamente) no pipeline |
+| `_MODELS_DATASET` | `models` | Nome do dataset BigQuery de modelos, criado se não existir |
+| `_ARTIFACT_REGISTRY_INDEX_URL` | URL do índice PyPI privado (Artifact Registry) | Repositório de onde `pip install` baixa `kfp`, `google-cloud-pipeline-components`, etc. |
+
+**`.cloudbuild/prod.yaml`**
+
+| Variável | Default | Para que serve |
+|---|---|---|
+| `_TAG_NAME` | `v1.0.0` | Tag da release sendo promovida (já existia; `deploy.yml` sempre repassa a tag real via `--substitutions`) |
+| `_REGION` | `southamerica-east1` | Região do Workflow e dos parâmetros repassados a ele |
+| `_WORKFLOW_NAME` | `credpj-model-promotion-workflow` | Nome do Cloud Workflow implantado e executado |
+| `_WORKFLOW_SOURCE_FILE` | `pipelines/model_promotion_workflow.yaml` | Arquivo-fonte do Workflow que é implantado |
+| `_DATAFORM_REPOSITORY_ID` | `df-repo-pub-des` | Repositório Dataform que o Workflow compila/executa |
+| `_DATAFORM_GIT_COMMITISH` | `dataform-risco-pub` | Branch/commit do Dataform usado na compilação |
+| `_DATAFORM_SA_PREFIX` | `sa-df-pub-des` | Prefixo da Service Account do Dataform (o e-mail final é `<prefixo>@<project_id>.iam.gserviceaccount.com`) |
+| `_ARTIFACT_REGISTRY_INDEX_URL` | URL do índice PyPI privado (Artifact Registry) | Mesmo repositório usado em `dev.yaml`, para instalar `pyyaml` |
+
+`project_id`, `dataset_id`, `pipeline_root` e `service_account` do ambiente de produção **não** viraram substitution — continuam vindo de `model-config.yaml` (`model_training.environments.production`), que já era a fonte única de verdade para esses dados antes desta mudança. A regra de bolso: se o valor descreve *onde/como o modelo roda* (projeto, dataset, bucket, SA de execução), ele vive em `model-config.yaml`; se descreve *como o build/CI está configurado* (região do build, nome do Workflow, repositório/branch do Dataform, índice do PyPI), ele vive em `substitutions:`.
+
+**Como sobrescrever uma variável** sem editar o arquivo, tanto rodando manualmente quanto num Trigger do Cloud Build:
+
+```bash
+gcloud builds submit --config=.cloudbuild/prod.yaml \
+  --project=prj-rsk-credpj-inf-prd \
+  --substitutions=_TAG_NAME=v2.1.0,_DATAFORM_GIT_COMMITISH=outra-branch \
+  .
+```
+
+Hoje quem dispara os dois builds é o próprio `.github/workflows/deploy.yml`, via `gcloud builds submit` (não um Cloud Build Trigger nativo) — ele já repassa `_TAG_NAME` dessa forma para `prod.yaml` (`--substitutions="_TAG_NAME=${{ github.ref_name }}"`). Se algum dia isso migrar para um Cloud Build Trigger nativo, os mesmos nomes de variável podem ser definidos na seção "Variáveis de substituição" da configuração do trigger — o valor passado ali (ou via `--substitutions`) sempre tem prioridade sobre o default declarado no YAML.

@@ -1,25 +1,22 @@
 # ==============================================================================
-# Cloud Build - Ambiente de Desenvolvimento / Modelagem (MDL)
+# TEMPLATE — Cloud Build: Ambiente de Desenvolvimento / Modelagem (MDL)
 # ==============================================================================
-# Acionado por push na branch de modelagem (ver .github/workflows/deploy.yml).
-# O projeto de destino vem de `$PROJECT_ID` (variável nativa do Cloud Build,
-# definida pela flag `--project` do `gcloud builds submit` que dispara este
-# build) — não é hardcoded aqui, o que permite reaproveitar este arquivo em
-# outro projeto/produto sem editar nada.
+# O projeto de destino vem de $PROJECT_ID (variável nativa do Cloud Build,
+# definida pela flag --project de quem dispara o build — ver deploy.yml).
 #
-# Os demais valores específicos deste pipeline são declarados em
-# `substitutions:` abaixo e podem ser sobrescritos por build sem tocar neste
-# arquivo, ex.:
+# Os demais valores são declarados em `substitutions:` abaixo. Preencha os
+# defaults com os dados do seu produto (ou use generate.sh + vars.example.env
+# para preencher tudo de uma vez). Também podem ser sobrescritos por build,
+# sem editar este arquivo:
 #   gcloud builds submit --config=.cloudbuild/dev.yaml \
-#     --substitutions=_REGION=us-central1,_MODELS_DATASET=models_us .
-#
-# Ver README.md (seção "Fluxo de CI/CD") para detalhes.
+#     --substitutions=_REGION=us-central1 .
 # ==============================================================================
 
 substitutions:
-  _REGION: 'southamerica-east1'
-  _MODELS_DATASET: 'models'
-  _ARTIFACT_REGISTRY_INDEX_URL: 'https://southamerica-east1-python.pkg.dev/prj-artifact-services-prd/acr-artifact-prd-001/simple/'
+  _REGION: '__region__'
+  _MODELS_DATASET: '__models_dataset__'
+  _ARTIFACT_REGISTRY_INDEX_URL: '__artifact_registry_index_url__'
+  _PIPELINE_SCRIPT: 'pipelines/pipeline.py'
 
 steps:
   # -------------------------------------------------------------
@@ -44,14 +41,10 @@ steps:
       - '-c'
       - |
         echo "=== Instalando dependências de MLOps ==="
-        pip install --index-url ${_ARTIFACT_REGISTRY_INDEX_URL} \
-          kfp==2.16.0 \
-          google-cloud-pipeline-components==2.22.0 \
-          google-cloud-aiplatform==1.159.0 \
-          pyyaml
+        pip install --index-url ${_ARTIFACT_REGISTRY_INDEX_URL} -r requirements.txt
 
         echo "=== Compilando e Submetendo o Pipeline para o Vertex AI ==="
-        python3 pipelines/pipeline.py --submit
+        python3 ${_PIPELINE_SCRIPT} --submit
 
 options:
   logging: 'CLOUD_LOGGING_ONLY'
