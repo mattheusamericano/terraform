@@ -42,10 +42,15 @@ if [ ! -f "$VARS_FILE" ]; then
   exit 1
 fi
 
-if [ -e "$OUT_DIR" ] && [ -n "$(ls -A "$OUT_DIR" 2>/dev/null)" ]; then
-  echo "Erro: diretório de saída já existe e não está vazio: $OUT_DIR" >&2
-  echo "Escolha outro diretório ou esvazie este antes de rodar novamente." >&2
-  exit 1
+if [ -e "$OUT_DIR" ]; then
+  # Permite um diretório que só contenha .git/ — é o caso normal de já ter
+  # clonado localmente um repositório remoto vazio antes de gerar o template.
+  non_git_entries="$(ls -A "$OUT_DIR" 2>/dev/null | grep -v -x '\.git' || true)"
+  if [ -n "$non_git_entries" ]; then
+    echo "Erro: diretório de saída já existe e não está vazio: $OUT_DIR" >&2
+    echo "Escolha outro diretório, ou esvazie-o (exceto .git/) antes de rodar novamente." >&2
+    exit 1
+  fi
 fi
 
 mkdir -p "$OUT_DIR"
