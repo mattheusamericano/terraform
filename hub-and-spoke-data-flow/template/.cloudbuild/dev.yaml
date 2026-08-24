@@ -1,8 +1,15 @@
 # ==============================================================================
 # TEMPLATE — Cloud Build: Ambiente de Desenvolvimento / Modelagem (MDL)
 # ==============================================================================
+# Mesmo fluxo do .cloudbuild/prod.yaml (implanta e dispara o Cloud Workflow de
+# promoção — compila Dataform e publica o listing no Analytics Hub), só que
+# apontando pro ambiente de modelagem/dev (model_training.environments.
+# development em model-config.yaml) em vez de produção.
+#
 # O projeto de destino vem de $PROJECT_ID (variável nativa do Cloud Build,
 # definida pela flag --project de quem dispara o build — ver deploy.yml).
+# Os parâmetros do ambiente (project_id, dataset, pipeline_root,
+# service_account) vêm de model-config.yaml, não deste arquivo.
 #
 # Os demais valores são declarados em `substitutions:` abaixo. Preencha os
 # defaults com os dados do seu produto (ou use generate.sh + vars.example.env
@@ -13,40 +20,123 @@
 # ==============================================================================
 
 substitutions:
+  _TAG_NAME: 'dev'
   _REGION: '__region__'
-  _MODELS_DATASET: '__models_dataset__'
+  _WORKFLOW_NAME: '__workflow_name__'
+  _WORKFLOW_SOURCE_FILE: 'pipelines/model_promotion_workflow.yaml'
+  _DATAFORM_REPOSITORY_ID: '__dataform_repository_id__'
+  _DATAFORM_GIT_COMMITISH: '__dataform_git_commitish__'
+  _DATAFORM_SA_PREFIX: '__dataform_sa_prefix__'
   _ARTIFACT_REGISTRY_INDEX_URL: '__artifact_registry_index_url__'
-  _PIPELINE_SCRIPT: 'pipelines/pipeline.py'
 
 steps:
   # -------------------------------------------------------------
-  # 🛠️ Passo 0: Garantir a existência do dataset de modelos
+  # 🏛️ Passo 1: Implantar o Cloud Workflow no Spoke de Modelagem
   # -------------------------------------------------------------
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:latest'
-    id: 'ensure-models-dataset'
+    id: 'deploy-cloud-workflow'
     entrypoint: 'sh'
     args:
       - '-c'
       - |
-        echo "=== Garantindo a existência do Dataset '${_MODELS_DATASET}' ==="
-        bq query --use_legacy_sql=false 'CREATE SCHEMA IF NOT EXISTS `$PROJECT_ID.${_MODELS_DATASET}` OPTIONS(location="${_REGION}");'
+
+        pip3 install --index-url ${_ARTIFACT_REGISTRY_INDEX_URL} pyyaml --quiet --break-system-packages 2>/dev/null
+        python3 -c "
+        import yaml
+        import subprocess
+
+        # Carrega configurações de modelagem/dev
+        with open('model-config.yaml', 'r') as f:
+            config = yaml.safe_load(f)
+
+        dev_config = config['model_training']['environments']['development']
+        project_id = dev_config['project_id']
+        service_account = dev_config['service_account']
+
+        workflow_name = '${_WORKFLOW_NAME}'
+        source_file = '${_WORKFLOW_SOURCE_FILE}'
+        location = '${_REGION}'
+
+        print(f'=== Implantando Cloud Workflow {workflow_name} no projeto {project_id} ===')
+        # Executa o deploy do workflow usando a Service Account do spoke de modelagem
+        cmd = [
+            'gcloud', 'workflows', 'deploy', workflow_name,
+            f'--source={source_file}',
+            f'--location={location}',
+            f'--project={project_id}',
+            f'--service-account={service_account}'
+        ]
+        subprocess.run(cmd, check=True)
+        "
 
   # -------------------------------------------------------------
-  # 🚀 Passo 1: Compilar e Submeter o Pipeline de Treino no Vertex AI
+  # ⚡ Passo 2: Executar o Workflow de forma Assíncrona e Encerrar
   # -------------------------------------------------------------
-  - name: 'python:3.10-slim'
-    id: 'submit-vertex-pipeline'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:latest'
+    id: 'trigger-cloud-workflow-async'
     entrypoint: 'sh'
+    env:
+      - 'TAG_NAME=$_TAG_NAME'
     args:
       - '-c'
       - |
-        echo "=== Instalando dependências de MLOps ==="
-        pip install --index-url ${_ARTIFACT_REGISTRY_INDEX_URL} -r requirements.txt
+        pip3 install --index-url ${_ARTIFACT_REGISTRY_INDEX_URL} pyyaml --quiet --break-system-packages 2>/dev/null
+        python3 -c "
+        import yaml
+        import json
+        import subprocess
+        import os
 
-        echo "=== Compilando e Submetendo o Pipeline para o Vertex AI ==="
-        python3 ${_PIPELINE_SCRIPT} --submit
+        # Carrega configurações de modelagem/dev
+        with open('model-config.yaml', 'r') as f:
+            config = yaml.safe_load(f)
+
+        dev_config = config['model_training']['environments']['development']
+        project_id = dev_config['project_id']
+        dataset_id = dev_config['dataset_id']
+        pipeline_root = dev_config['pipeline_root']
+        service_account = dev_config['service_account']
+
+        tag_name = os.getenv('TAG_NAME', '${_TAG_NAME}') # Fallback se rodar manualmente
+        template_uri = f'{pipeline_root}/pipeline.json'
+
+        # Monta os inputs que o Workflow espera
+        workflow_inputs = {
+            'project_id': project_id,
+            'dataset_id': dataset_id,
+            'location': '${_REGION}',
+            'repository_id': '${_DATAFORM_REPOSITORY_ID}',
+            'pipeline_root': pipeline_root,
+            'template_uri': template_uri,
+            'service_account': service_account,
+            'dataform_service_account': f'${_DATAFORM_SA_PREFIX}@{project_id}.iam.gserviceaccount.com',
+            'git_commitish': '${_DATAFORM_GIT_COMMITISH}',
+            'trigger_id': ''
+        }
+
+        workflow_name = '${_WORKFLOW_NAME}'
+        location = '${_REGION}'
+        inputs_json = json.dumps(workflow_inputs)
+
+        print(f'=== Executando o Cloud Workflow {workflow_name} de forma ASSÍNCRONA ===')
+        print(f'Inputs: {inputs_json}')
+
+        cmd = [
+            'gcloud', 'workflows', 'run', workflow_name,
+            f'--location={location}',
+            f'--project={project_id}',
+            f'--data={inputs_json}'
+        ]
+
+        # Executa de forma assíncrona (não espera o término da execução longa de Dataform)
+        subprocess.run(cmd, check=True)
+        print('=== Cloud Workflow inicializado com SUCESSO! Finalizando o step do Cloud Build. ===')
+        "
 
 options:
+  # CLOUD_LOGGING_ONLY (em vez do default LEGACY) é exigido pelo Cloud Build
+  # sempre que o build roda com --service-account customizado (ver
+  # CLOUDBUILD_SERVICE_ACCOUNT_NPRD em vars.env, passado por deploy.yml).
   logging: 'CLOUD_LOGGING_ONLY'
   env:
     - 'no_proxy=metadata,metadata.google.internal,169.254.169.254,googleapis.com,*.googleapis.com,gcr.io,pkg.dev'

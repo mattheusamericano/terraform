@@ -129,6 +129,9 @@ steps:
         "
 
 options:
+  # CLOUD_LOGGING_ONLY (em vez do default LEGACY) é exigido pelo Cloud Build
+  # sempre que o build roda com --service-account customizado (ver
+  # CLOUDBUILD_SERVICE_ACCOUNT_PRD em vars.env, passado por deploy.yml).
   logging: 'CLOUD_LOGGING_ONLY'
   env:
     - 'no_proxy=metadata,metadata.google.internal,169.254.169.254,googleapis.com,*.googleapis.com,gcr.io,pkg.dev'

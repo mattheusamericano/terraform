@@ -47,6 +47,8 @@ jobs:
       workerpool_mdl: ${{ steps.vars.outputs.workerpool_mdl }}
       workerpool_inf: ${{ steps.vars.outputs.workerpool_inf }}
       branch_name: ${{ steps.vars.outputs.branch_name }}
+      cloudbuild_sa_nprd: ${{ steps.vars.outputs.cloudbuild_sa_nprd }}
+      cloudbuild_sa_prd: ${{ steps.vars.outputs.cloudbuild_sa_prd }}
     steps:
       - uses: actions/checkout@v4
 
@@ -56,10 +58,13 @@ jobs:
           # Extrai cada chave direto do arquivo (grep/cut), em vez de usar
           # `source` (que executa o arquivo inteiro como código bash — uma
           # única linha mal formada em qualquer lugar do arquivo derruba o
-          # job inteiro com um erro difícil de entender). Também tolera \r
-          # de fim de linha (CRLF/Windows) sem precisar normalizar o arquivo.
+          # job inteiro com um erro difícil de entender). Tolera \r de fim de
+          # linha (CRLF/Windows) e espaços em branco no começo/fim do valor
+          # (ex.: "CHAVE= valor" com espaço depois do "=" — sem isso, esse
+          # espaço vaza pro comando gcloud e vira um argumento vazio).
           get_var() {
-            grep -E "^$1=" vars.env | tail -n1 | cut -d'=' -f2- | tr -d '\r'
+            grep -E "^$1=" vars.env | tail -n1 | cut -d'=' -f2- | tr -d '\r' \
+              | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
           }
 
           PROJECT_ID_MDL="$(get_var TRAIN_PROJECT_ID)"
@@ -68,6 +73,8 @@ jobs:
           WORKERPOOL_MDL_VAL="$(get_var WORKERPOOL_DEV)"
           WORKERPOOL_INF_VAL="$(get_var WORKERPOOL_PROD)"
           BRANCH_NAME_VAL="$(get_var BRANCH_NAME)"
+          CLOUDBUILD_SA_NPRD_VAL="$(get_var CLOUDBUILD_SERVICE_ACCOUNT_NPRD)"
+          CLOUDBUILD_SA_PRD_VAL="$(get_var CLOUDBUILD_SERVICE_ACCOUNT_PRD)"
 
           # Debug: imprime o que foi extraído no log do job (não é secret,
           # são só nomes de projeto/branch/worker pool) — se algo aqui sair
@@ -80,6 +87,8 @@ jobs:
           echo "WORKERPOOL_DEV     -> '$WORKERPOOL_MDL_VAL'"
           echo "WORKERPOOL_PROD    -> '$WORKERPOOL_INF_VAL'"
           echo "BRANCH_NAME        -> '$BRANCH_NAME_VAL'"
+          echo "CLOUDBUILD_SERVICE_ACCOUNT_NPRD -> '$CLOUDBUILD_SA_NPRD_VAL'"
+          echo "CLOUDBUILD_SERVICE_ACCOUNT_PRD  -> '$CLOUDBUILD_SA_PRD_VAL'"
           echo "github.ref deste run -> '${{ github.ref }}'"
           echo "===================================="
 
@@ -89,6 +98,8 @@ jobs:
           echo "workerpool_mdl=$WORKERPOOL_MDL_VAL" >> "$GITHUB_OUTPUT"
           echo "workerpool_inf=$WORKERPOOL_INF_VAL" >> "$GITHUB_OUTPUT"
           echo "branch_name=$BRANCH_NAME_VAL" >> "$GITHUB_OUTPUT"
+          echo "cloudbuild_sa_nprd=$CLOUDBUILD_SA_NPRD_VAL" >> "$GITHUB_OUTPUT"
+          echo "cloudbuild_sa_prd=$CLOUDBUILD_SA_PRD_VAL" >> "$GITHUB_OUTPUT"
 
   train-and-evaluate-mdl:
     name: Train and Evaluate Model (MDL)
@@ -119,13 +130,14 @@ jobs:
       - name: Setup gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Submit Model Training via Cloud Build Private Pool
+      - name: Submit Cloud Build (implanta + dispara o Cloud Workflow) via Private Pool
         run: |
           gcloud builds submit \
             --project=${{ needs.load-config.outputs.project_id_mdl }} \
             --config=.cloudbuild/dev.yaml \
             --worker-pool="projects/${{ needs.load-config.outputs.project_id_mdl }}/locations/${{ needs.load-config.outputs.region }}/workerPools/${{ needs.load-config.outputs.workerpool_mdl }}" \
             --region=${{ needs.load-config.outputs.region }} \
+            --service-account="${{ needs.load-config.outputs.cloudbuild_sa_nprd }}" \
             .
 
   train-and-evaluate-inf:
@@ -157,11 +169,12 @@ jobs:
       - name: Setup gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Submit Model Training via Cloud Build Private Pool in INF Project
+      - name: Submit Cloud Build (implanta + dispara o Cloud Workflow) via Private Pool in INF Project
         run: |
           gcloud builds submit \
             --project=${{ needs.load-config.outputs.project_id_inf }} \
             --config=.cloudbuild/prod.yaml \
             --worker-pool="projects/${{ needs.load-config.outputs.project_id_inf }}/locations/${{ needs.load-config.outputs.region }}/workerPools/${{ needs.load-config.outputs.workerpool_inf }}" \
             --region=${{ needs.load-config.outputs.region }} \
+            --service-account="${{ needs.load-config.outputs.cloudbuild_sa_prd }}" \
             --substitutions="_TAG_NAME=${{ github.ref_name }}"
