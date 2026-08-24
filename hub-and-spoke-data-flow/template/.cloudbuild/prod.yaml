@@ -23,6 +23,9 @@ substitutions:
   _DATAFORM_GIT_COMMITISH: '__dataform_git_commitish__'
   _DATAFORM_SA_PREFIX: '__dataform_sa_prefix__'
   _ARTIFACT_REGISTRY_INDEX_URL: '__artifact_registry_index_url__'
+  _HUB_PROJECT_ID: '__hub_project_id__'
+  _DATA_EXCHANGE_ID: '__data_exchange_id__'
+  _LISTING_ID: '__listing_id__'
 
 steps:
   # -------------------------------------------------------------
@@ -106,7 +109,11 @@ steps:
             'service_account': service_account,
             'dataform_service_account': f'${_DATAFORM_SA_PREFIX}@{project_id}.iam.gserviceaccount.com',
             'git_commitish': '${_DATAFORM_GIT_COMMITISH}',
-            'trigger_id': ''  # Desativado pois o deploy agora é nativo ao final do pipeline da Vertex
+            'trigger_id': '',  # Desativado pois o deploy agora é nativo ao final do pipeline da Vertex
+            'publish_to_hub': True,  # produção publica o listing no Analytics Hub ao final do Dataform
+            'project_id_hub': '${_HUB_PROJECT_ID}',
+            'data_exchange_id': '${_DATA_EXCHANGE_ID}',
+            'listing_id': '${_LISTING_ID}'
         }
 
         workflow_name = '${_WORKFLOW_NAME}'

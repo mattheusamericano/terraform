@@ -18,15 +18,21 @@
 # Este mesmo arquivo é implantado em DOIS projetos diferentes (spoke de
 # modelagem via dev.yaml, spoke de produção via prod.yaml) — por isso os
 # campos que determinam EM QUAL PROJETO o workflow escreve (project_id,
-# project_id_hub, repository_id, dataform_service_account, data_exchange_id,
-# listing_id) são OBRIGATÓRIOS no input, sem fallback. dev.yaml e prod.yaml
-# sempre passam esses valores explicitamente via `--data=`; se o workflow
-# rodar sem eles (ex.: "Execute again" no Console sem preencher input), ele
-# falha alto e claro em vez de usar um valor padrão — um fallback aqui seria
-# perigoso, porque a instância implantada no projeto de modelagem poderia
-# silenciosamente acabar escrevendo no projeto de produção (ou vice-versa).
+# repository_id, dataform_service_account, e project_id_hub/data_exchange_id/
+# listing_id quando publish_to_hub=true) são OBRIGATÓRIOS no input, sem
+# fallback. dev.yaml e prod.yaml sempre passam esses valores explicitamente
+# via `--data=`; se o workflow rodar sem eles (ex.: "Execute again" no
+# Console sem preencher input), ele falha alto e claro em vez de usar um
+# valor padrão — um fallback aqui seria perigoso, porque a instância
+# implantada no projeto de modelagem poderia silenciosamente acabar
+# escrevendo no projeto de produção (ou vice-versa).
 # `location`/`ah_location`/`git_commitish` não determinam o projeto, então
 # mantêm um default seguro para facilitar teste manual.
+#
+# `publish_to_hub` (bool): controla se a ETAPA 2 (Analytics Hub) roda depois
+# do Dataform. dev.yaml manda `false` (modelagem só compila/roda o Dataform,
+# não publica nada) e prod.yaml manda `true`. Default seguro = false — se
+# omitido, o workflow só faz o Dataform e não tenta publicar.
 # ==============================================================================
 
 main:
@@ -39,6 +45,7 @@ main:
           - dataset_id: ${map.get(input, "dataset_id")}
           - location: ${default(map.get(input, "location"), "__region__")}
           - repository_id: ${map.get(input, "repository_id")}
+          - publish_to_hub: ${default(map.get(input, "publish_to_hub"), false)}
           # Reservadas para uso futuro (disparo do pipeline Vertex AI a partir
           # daqui) — nenhum step abaixo consome estas três hoje, ver nota no
           # topo do arquivo.
@@ -47,15 +54,17 @@ main:
           - service_account: ${map.get(input, "service_account")}
           - dataform_service_account: ${map.get(input, "dataform_service_account")}
           - git_commitish: ${default(map.get(input, "git_commitish"), "__dataform_git_commitish__")}
-          # --- Variáveis do Analytics Hub ---
+          # --- Variáveis do Analytics Hub (só obrigatórias se publish_to_hub=true) ---
           - ah_location: ${default(map.get(input, "ah_location"), "__region__")}
           - data_exchange_id: ${map.get(input, "data_exchange_id")}
           - listing_id: ${map.get(input, "listing_id")}
 
     - validate_required_inputs:
         switch:
-          - condition: ${project_id == null or project_id_hub == null or dataset_id == null or repository_id == null or dataform_service_account == null or data_exchange_id == null or listing_id == null}
-            raise: "Input obrigatório ausente (project_id/project_id_hub/dataset_id/repository_id/dataform_service_account/data_exchange_id/listing_id). Este workflow é compartilhado entre modelagem e produção e não roda com defaults implícitos — passe o input completo (dev.yaml/prod.yaml já fazem isso)."
+          - condition: ${project_id == null or dataset_id == null or repository_id == null or dataform_service_account == null}
+            raise: "Input obrigatório ausente (project_id/dataset_id/repository_id/dataform_service_account). Este workflow é compartilhado entre modelagem e produção e não roda com defaults implícitos — passe o input completo (dev.yaml/prod.yaml já fazem isso)."
+          - condition: ${publish_to_hub and (project_id_hub == null or data_exchange_id == null or listing_id == null)}
+            raise: "publish_to_hub=true mas falta project_id_hub/data_exchange_id/listing_id no input."
 
     # ==========================================================================
     # 💾 ETAPA 1: ORQUESTRAÇÃO DE DADOS (DATAFORM)
@@ -106,8 +115,10 @@ main:
 
     - check_dataform_state:
         switch:
-          - condition: ${status_res.body.state == "SUCCEEDED"}
+          - condition: ${status_res.body.state == "SUCCEEDED" and publish_to_hub}
             next: publish_to_analytics_hub
+          - condition: ${status_res.body.state == "SUCCEEDED" and not publish_to_hub}
+            next: success_dataform_only
           - condition: ${status_res.body.state == "FAILED" or status_res.body.state == "CANCELLED"}
             next: dataform_failed
         next: wait_and_poll_dataform
@@ -153,6 +164,9 @@ main:
     # ==========================================================================
     # ✅ RETORNOS FINAIS DA PIPELINE
     # ==========================================================================
+    - success_dataform_only:
+        return: "Sucesso: Dataform executado. Publicação no Analytics Hub foi pulada (publish_to_hub=false)."
+
     - listing_already_exists:
         return: "Aviso: A execução do Dataform foi concluída, mas a etapa do Analytics Hub identificou que o listing já existe (Erro 409). Pipeline finalizada."
 
