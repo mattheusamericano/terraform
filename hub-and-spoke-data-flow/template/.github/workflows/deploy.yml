@@ -47,6 +47,7 @@ jobs:
       workerpool_mdl: ${{ steps.vars.outputs.workerpool_mdl }}
       workerpool_inf: ${{ steps.vars.outputs.workerpool_inf }}
       branch_name: ${{ steps.vars.outputs.branch_name }}
+      prod_branch_name: ${{ steps.vars.outputs.prod_branch_name }}
       cloudbuild_sa_nprd: ${{ steps.vars.outputs.cloudbuild_sa_nprd }}
       cloudbuild_sa_prd: ${{ steps.vars.outputs.cloudbuild_sa_prd }}
     steps:
@@ -73,6 +74,7 @@ jobs:
           WORKERPOOL_MDL_VAL="$(get_var WORKERPOOL_DEV)"
           WORKERPOOL_INF_VAL="$(get_var WORKERPOOL_PROD)"
           BRANCH_NAME_VAL="$(get_var BRANCH_NAME)"
+          PROD_BRANCH_NAME_VAL="$(get_var PROD_BRANCH_NAME)"
           CLOUDBUILD_SA_NPRD_VAL="$(get_var CLOUDBUILD_SERVICE_ACCOUNT_NPRD)"
           CLOUDBUILD_SA_PRD_VAL="$(get_var CLOUDBUILD_SERVICE_ACCOUNT_PRD)"
 
@@ -87,6 +89,7 @@ jobs:
           echo "WORKERPOOL_DEV     -> '$WORKERPOOL_MDL_VAL'"
           echo "WORKERPOOL_PROD    -> '$WORKERPOOL_INF_VAL'"
           echo "BRANCH_NAME        -> '$BRANCH_NAME_VAL'"
+          echo "PROD_BRANCH_NAME   -> '$PROD_BRANCH_NAME_VAL'"
           echo "CLOUDBUILD_SERVICE_ACCOUNT_NPRD -> '$CLOUDBUILD_SA_NPRD_VAL'"
           echo "CLOUDBUILD_SERVICE_ACCOUNT_PRD  -> '$CLOUDBUILD_SA_PRD_VAL'"
           echo "github.ref deste run -> '${{ github.ref }}'"
@@ -98,6 +101,7 @@ jobs:
           echo "workerpool_mdl=$WORKERPOOL_MDL_VAL" >> "$GITHUB_OUTPUT"
           echo "workerpool_inf=$WORKERPOOL_INF_VAL" >> "$GITHUB_OUTPUT"
           echo "branch_name=$BRANCH_NAME_VAL" >> "$GITHUB_OUTPUT"
+          echo "prod_branch_name=$PROD_BRANCH_NAME_VAL" >> "$GITHUB_OUTPUT"
           echo "cloudbuild_sa_nprd=$CLOUDBUILD_SA_NPRD_VAL" >> "$GITHUB_OUTPUT"
           echo "cloudbuild_sa_prd=$CLOUDBUILD_SA_PRD_VAL" >> "$GITHUB_OUTPUT"
 
@@ -143,7 +147,9 @@ jobs:
   train-and-evaluate-inf:
     name: Train and Evaluate Model (INF)
     needs: load-config
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Dispara em duas situações: tag v* (fluxo original) OU push na branch de
+    # produção configurada em PROD_BRANCH_NAME (ex.: main) — o que vier primeiro.
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == format('refs/heads/{0}', needs.load-config.outputs.prod_branch_name)
     runs-on: arc-runner-set-default-gcp-caixagithub-prod
     permissions:
       contents: read

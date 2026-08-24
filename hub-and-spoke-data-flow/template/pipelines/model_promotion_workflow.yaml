@@ -15,10 +15,18 @@
 # nenhum step aqui nem em `prod.yaml` que rode o pipeline em produção. Ver
 # README.md ("O que este template NÃO conecta ainda").
 #
-# Os valores abaixo em `default(...)` são só um fallback para execução manual
-# (sem input) — o .cloudbuild/prod.yaml deste template SEMPRE passa os valores
-# reais explicitamente via `--data=`, então preencher estes defaults é
-# opcional, mas recomendado para não deixar placeholders "__..__" órfãos aqui.
+# Este mesmo arquivo é implantado em DOIS projetos diferentes (spoke de
+# modelagem via dev.yaml, spoke de produção via prod.yaml) — por isso os
+# campos que determinam EM QUAL PROJETO o workflow escreve (project_id,
+# project_id_hub, repository_id, dataform_service_account, data_exchange_id,
+# listing_id) são OBRIGATÓRIOS no input, sem fallback. dev.yaml e prod.yaml
+# sempre passam esses valores explicitamente via `--data=`; se o workflow
+# rodar sem eles (ex.: "Execute again" no Console sem preencher input), ele
+# falha alto e claro em vez de usar um valor padrão — um fallback aqui seria
+# perigoso, porque a instância implantada no projeto de modelagem poderia
+# silenciosamente acabar escrevendo no projeto de produção (ou vice-versa).
+# `location`/`ah_location`/`git_commitish` não determinam o projeto, então
+# mantêm um default seguro para facilitar teste manual.
 # ==============================================================================
 
 main:
@@ -26,25 +34,28 @@ main:
   steps:
     - init_variables:
         assign:
-          - project_id: ${default(map.get(input, "project_id"), "__serving_project_id__")}
-          - project_id_hub: ${default(map.get(input, "project_id_hub"), "__hub_project_id__")}
-          - dataset_id: ${default(map.get(input, "dataset_id"), "__dataset_id__")}
+          - project_id: ${map.get(input, "project_id")}
+          - project_id_hub: ${map.get(input, "project_id_hub")}
+          - dataset_id: ${map.get(input, "dataset_id")}
           - location: ${default(map.get(input, "location"), "__region__")}
-          - repository_id: ${default(map.get(input, "repository_id"), "__dataform_repository_id__")}
+          - repository_id: ${map.get(input, "repository_id")}
           # Reservadas para uso futuro (disparo do pipeline Vertex AI a partir
           # daqui) — nenhum step abaixo consome estas três hoje, ver nota no
           # topo do arquivo.
-          - pipeline_root: ${default(map.get(input, "pipeline_root"), "__serving_pipeline_root__")}
-          - template_uri: ${default(map.get(input, "template_uri"), "__serving_template_uri__")}
-          - service_account: ${default(map.get(input, "service_account"), "__serving_service_account__")}
-          - dataform_service_account: ${default(map.get(input, "dataform_service_account"), "__dataform_sa_prefix__" + "@" + project_id + ".iam.gserviceaccount.com")}
+          - pipeline_root: ${map.get(input, "pipeline_root")}
+          - template_uri: ${map.get(input, "template_uri")}
+          - service_account: ${map.get(input, "service_account")}
+          - dataform_service_account: ${map.get(input, "dataform_service_account")}
           - git_commitish: ${default(map.get(input, "git_commitish"), "__dataform_git_commitish__")}
-          - bucket_name: ${"__serving_bucket_name__"}
           # --- Variáveis do Analytics Hub ---
           - ah_location: ${default(map.get(input, "ah_location"), "__region__")}
-          - data_exchange_id: ${default(map.get(input, "data_exchange_id"), "__data_exchange_id__")}
-          - listing_id: ${default(map.get(input, "listing_id"), "__listing_id__")}
+          - data_exchange_id: ${map.get(input, "data_exchange_id")}
+          - listing_id: ${map.get(input, "listing_id")}
 
+    - validate_required_inputs:
+        switch:
+          - condition: ${project_id == null or project_id_hub == null or dataset_id == null or repository_id == null or dataform_service_account == null or data_exchange_id == null or listing_id == null}
+            raise: "Input obrigatório ausente (project_id/project_id_hub/dataset_id/repository_id/dataform_service_account/data_exchange_id/listing_id). Este workflow é compartilhado entre modelagem e produção e não roda com defaults implícitos — passe o input completo (dev.yaml/prod.yaml já fazem isso)."
 
     # ==========================================================================
     # 💾 ETAPA 1: ORQUESTRAÇÃO DE DADOS (DATAFORM)
