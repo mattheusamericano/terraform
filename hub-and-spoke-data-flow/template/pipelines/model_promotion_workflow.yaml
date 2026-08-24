@@ -33,6 +33,13 @@
 # do Dataform. dev.yaml manda `false` (modelagem só compila/roda o Dataform,
 # não publica nada) e prod.yaml manda `true`. Default seguro = false — se
 # omitido, o workflow só faz o Dataform e não tenta publicar.
+#
+# check_missing_inputs/validate_required_inputs (logo abaixo): se faltar
+# algum campo obrigatório, a mensagem de erro já lista pelo nome exatamente
+# quais campos vieram null — não precisa adivinhar. Para achar a causa raiz
+# (qual placeholder não foi preenchido), veja o log do step
+# trigger-cloud-workflow-async em dev.yaml/prod.yaml no Cloud Build: ele
+# imprime "Inputs: {...}" com o JSON completo enviado, antes de disparar.
 # ==============================================================================
 
 main:
@@ -59,12 +66,21 @@ main:
           - data_exchange_id: ${map.get(input, "data_exchange_id")}
           - listing_id: ${map.get(input, "listing_id")}
 
+    - check_missing_inputs:
+        assign:
+          - missing: []
+          - missing: ${if(project_id == null, list.concat(missing, "project_id"), missing)}
+          - missing: ${if(dataset_id == null, list.concat(missing, "dataset_id"), missing)}
+          - missing: ${if(repository_id == null, list.concat(missing, "repository_id"), missing)}
+          - missing: ${if(dataform_service_account == null, list.concat(missing, "dataform_service_account"), missing)}
+          - missing: ${if(publish_to_hub and project_id_hub == null, list.concat(missing, "project_id_hub"), missing)}
+          - missing: ${if(publish_to_hub and data_exchange_id == null, list.concat(missing, "data_exchange_id"), missing)}
+          - missing: ${if(publish_to_hub and listing_id == null, list.concat(missing, "listing_id"), missing)}
+
     - validate_required_inputs:
         switch:
-          - condition: ${project_id == null or dataset_id == null or repository_id == null or dataform_service_account == null}
-            raise: "Input obrigatório ausente (project_id/dataset_id/repository_id/dataform_service_account). Este workflow é compartilhado entre modelagem e produção e não roda com defaults implícitos — passe o input completo (dev.yaml/prod.yaml já fazem isso)."
-          - condition: ${publish_to_hub and (project_id_hub == null or data_exchange_id == null or listing_id == null)}
-            raise: "publish_to_hub=true mas falta project_id_hub/data_exchange_id/listing_id no input."
+          - condition: ${len(missing) > 0}
+            raise: '${"Input(s) obrigatório(s) ausente(s): " + text.join(missing, ", ") + ". Confira se o placeholder/substitution correspondente está preenchido no vars.env (ou nos substitutions: de dev.yaml/prod.yaml) — veja também o log do step trigger-cloud-workflow-async no Cloud Build, que imprime o JSON completo enviado (Inputs: ...) antes de disparar o workflow."}'
 
     # ==========================================================================
     # 💾 ETAPA 1: ORQUESTRAÇÃO DE DADOS (DATAFORM)
