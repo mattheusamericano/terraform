@@ -76,11 +76,21 @@ main:
           - missing: ${if(publish_to_hub and project_id_hub == null, list.concat(missing, "project_id_hub"), missing)}
           - missing: ${if(publish_to_hub and data_exchange_id == null, list.concat(missing, "data_exchange_id"), missing)}
           - missing: ${if(publish_to_hub and listing_id == null, list.concat(missing, "listing_id"), missing)}
+          - missing_str: ""
+
+    - build_missing_message:
+        for:
+          value: missing_field
+          in: ${missing}
+          steps:
+            - append_missing_field:
+                assign:
+                  - missing_str: ${missing_str + missing_field + " "}
 
     - validate_required_inputs:
         switch:
           - condition: ${len(missing) > 0}
-            raise: '${"Input(s) obrigatório(s) ausente(s): " + text.join(missing, ", ") + ". Confira se o placeholder/substitution correspondente está preenchido no vars.env (ou nos substitutions: de dev.yaml/prod.yaml) — veja também o log do step trigger-cloud-workflow-async no Cloud Build, que imprime o JSON completo enviado (Inputs: ...) antes de disparar o workflow."}'
+            raise: '${"Input(s) obrigatório(s) ausente(s): " + missing_str + "- confira se o placeholder/substitution correspondente está preenchido no vars.env (ou nos substitutions: de dev.yaml/prod.yaml). Veja também o log do step trigger-cloud-workflow-async no Cloud Build, que imprime o JSON completo enviado (Inputs: ...) antes de disparar o workflow."}'
 
     # ==========================================================================
     # 💾 ETAPA 1: ORQUESTRAÇÃO DE DADOS (DATAFORM)
