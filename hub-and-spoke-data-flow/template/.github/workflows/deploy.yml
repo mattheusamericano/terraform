@@ -20,6 +20,19 @@
 # Requer os secrets do repositório:
 #   - workload_identity_provider_gcp e service_account_gcp (autenticação via
 #     Workload Identity Federation)
+#
+# TEMPLATE_DIR (abaixo): premissa deste template — ele vive dentro da
+# subpasta 'dataform-workflow' do repositório, não na raiz. A raiz do
+# repositório é do projeto Dataform (workflow_settings.yaml/definitions/ são
+# OBRIGADOS a ficar lá, exigência do próprio Dataform), então o template
+# inteiro (.cloudbuild/, pipelines/, apply-vars.sh, vars.env,
+# model-config.yaml) cede a raiz e fica em 'dataform-workflow/'. Se algum
+# produto não precisar dessa subpasta (repositório dedicado, sem Dataform
+# disputando a raiz), troque para '' aqui. Este arquivo (deploy.yml) é a
+# ÚNICA exceção à regra "nunca precisa editar" — o resto continua vindo de
+# vars.env. Importante: .github/workflows/deploy.yml em si TEM que continuar
+# na raiz do repositório — o GitHub só reconhece workflows ali, nunca dentro
+# de uma subpasta; não dá pra mover este arquivo junto com o resto.
 # ==============================================================================
 name: MLOps Model Training Deployment
 
@@ -28,6 +41,9 @@ on:
     tags:
       - 'v*'
   workflow_dispatch: {} # fallback manual (aba Actions → "Run workflow")
+
+env:
+  TEMPLATE_DIR: 'dataform-workflow'
 
 jobs:
   # --------------------------------------------------------------------------
@@ -63,8 +79,10 @@ jobs:
           # linha (CRLF/Windows) e espaços em branco no começo/fim do valor
           # (ex.: "CHAVE= valor" com espaço depois do "=" — sem isso, esse
           # espaço vaza pro comando gcloud e vira um argumento vazio).
+          VARS_FILE="${TEMPLATE_DIR:+$TEMPLATE_DIR/}vars.env"
+
           get_var() {
-            grep -E "^$1=" vars.env | tail -n1 | cut -d'=' -f2- | tr -d '\r' \
+            grep -E "^$1=" "$VARS_FILE" | tail -n1 | cut -d'=' -f2- | tr -d '\r' \
               | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
           }
 
@@ -82,7 +100,7 @@ jobs:
           # são só nomes de projeto/branch/worker pool) — se algo aqui sair
           # vazio ou diferente do esperado, é por isso que os jobs de treino
           # ficam "skipped" (o `if:` deles depende desses valores).
-          echo "=== Valores extraídos de vars.env ==="
+          echo "=== Valores extraídos de $VARS_FILE ==="
           echo "TRAIN_PROJECT_ID   -> '$PROJECT_ID_MDL'"
           echo "SERVING_PROJECT_ID -> '$PROJECT_ID_INF'"
           echo "REGION             -> '$REGION_VAL'"
@@ -119,8 +137,9 @@ jobs:
 
       - name: Resolve placeholders no workspace (sem commitar/dar push)
         run: |
-          chmod +x apply-vars.sh
-          ./apply-vars.sh vars.env .
+          prefix="${TEMPLATE_DIR:+$TEMPLATE_DIR/}"
+          chmod +x "${prefix}apply-vars.sh"
+          "${prefix}apply-vars.sh" "${prefix}vars.env" "${TEMPLATE_DIR:-.}"
 
       - name: Authenticate to Google Cloud
         id: auth
@@ -136,13 +155,14 @@ jobs:
 
       - name: Submit Cloud Build (implanta + dispara o Cloud Workflow) via Private Pool
         run: |
+          prefix="${TEMPLATE_DIR:+$TEMPLATE_DIR/}"
           gcloud builds submit \
             --project=${{ needs.load-config.outputs.project_id_mdl }} \
-            --config=.cloudbuild/dev.yaml \
+            --config="${prefix}.cloudbuild/dev.yaml" \
             --worker-pool="projects/${{ needs.load-config.outputs.project_id_mdl }}/locations/${{ needs.load-config.outputs.region }}/workerPools/${{ needs.load-config.outputs.workerpool_mdl }}" \
             --region=${{ needs.load-config.outputs.region }} \
             --service-account="${{ needs.load-config.outputs.cloudbuild_sa_nprd }}" \
-            .
+            "${TEMPLATE_DIR:-.}"
 
   train-and-evaluate-inf:
     name: Train and Evaluate Model (INF)
@@ -160,8 +180,9 @@ jobs:
 
       - name: Resolve placeholders no workspace (sem commitar/dar push)
         run: |
-          chmod +x apply-vars.sh
-          ./apply-vars.sh vars.env .
+          prefix="${TEMPLATE_DIR:+$TEMPLATE_DIR/}"
+          chmod +x "${prefix}apply-vars.sh"
+          "${prefix}apply-vars.sh" "${prefix}vars.env" "${TEMPLATE_DIR:-.}"
 
       - name: Authenticate to Google Cloud
         id: auth
@@ -177,10 +198,12 @@ jobs:
 
       - name: Submit Cloud Build (implanta + dispara o Cloud Workflow) via Private Pool in INF Project
         run: |
+          prefix="${TEMPLATE_DIR:+$TEMPLATE_DIR/}"
           gcloud builds submit \
             --project=${{ needs.load-config.outputs.project_id_inf }} \
-            --config=.cloudbuild/prod.yaml \
+            --config="${prefix}.cloudbuild/prod.yaml" \
             --worker-pool="projects/${{ needs.load-config.outputs.project_id_inf }}/locations/${{ needs.load-config.outputs.region }}/workerPools/${{ needs.load-config.outputs.workerpool_inf }}" \
             --region=${{ needs.load-config.outputs.region }} \
             --service-account="${{ needs.load-config.outputs.cloudbuild_sa_prd }}" \
-            --substitutions="_TAG_NAME=${{ github.ref_name }}"
+            --substitutions="_TAG_NAME=${{ github.ref_name }}" \
+            "${TEMPLATE_DIR:-.}"
