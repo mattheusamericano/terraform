@@ -1,9 +1,9 @@
 # ==============================================================================
-# TEMPLATE — GitHub Actions: gatilho de CI/CD via Cloud Build
+# GitHub Actions: gatilho de CI/CD via Cloud Build
 # ==============================================================================
-# Este arquivo NÃO tem placeholder nenhum — nunca precisa ser editado nem
-# "instanciado". A configuração de projetos/região/worker pools vem de
-# `vars.env`, lido do zero em cada execução pelo job `load-config` e
+# Este arquivo NÃO tem placeholder nenhum — nunca precisa ser editado além do
+# que já vem configurado. A configuração de projetos/região/worker pools vem
+# de `vars.env`, lido do zero em cada execução pelo job `load-config` e
 # repassado aos outros jobs via `needs.load-config.outputs`. As branches que
 # disparam cada job (modelagem/main) são hardcoded direto no `if:` de cada
 # job, não vêm de vars.env — assim o roteamento não depende de conseguir ler
@@ -11,10 +11,9 @@
 #
 # `apply-vars.sh` também roda dentro dos jobs de treino, mas só para resolver
 # os placeholders de arquivos que o Cloud Build lê como texto puro
-# (model-config.yaml, pipeline.py, os *.sql, os defaults de
-# .cloudbuild/*.yaml) — isso acontece só no workspace efêmero do runner,
-# nunca é commitado/dado push. `gcloud builds submit .` envia o diretório
-# como está naquele momento, resolvido ou não.
+# (model-config.yaml, os defaults de .cloudbuild/*.yaml) — isso acontece só
+# no workspace efêmero do runner, nunca é commitado/dado push. `gcloud builds
+# submit` envia o diretório `dataform-workflow/` já resolvido pro Cloud Build.
 #
 # Não há nenhum commit automático neste workflow — vars.env é um arquivo
 # normal, versionado como qualquer outro; editar um valor é só um commit seu,

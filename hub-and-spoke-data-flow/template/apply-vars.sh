@@ -4,11 +4,8 @@
 # um diretório, substituindo cada __CHAVE_EM_MINUSCULO__ pelo valor
 # correspondente em todos os arquivos daquele diretório (recursivo).
 #
-# É o motor de substituição comum a dois fluxos:
-#   - generate.sh: fluxo local/manual (copia o template pra outra pasta e
-#     aplica as variáveis nela).
-#   - .github/workflows/deploy.yml: chamado a cada execução dos jobs de
-#     treino, direto no workspace do runner — nunca commitado/dado push.
+# Chamado por .github/workflows/deploy.yml a cada execução dos jobs de
+# treino, direto no workspace do runner — nunca commitado/dado push.
 #
 # Uso: apply-vars.sh <arquivo-de-variaveis> <diretorio-alvo>
 # Sai com código != 0 se sobrar algum placeholder __..__ não preenchido.
