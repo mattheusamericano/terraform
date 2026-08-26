@@ -2,9 +2,12 @@
 # TEMPLATE — GitHub Actions: gatilho de CI/CD via Cloud Build
 # ==============================================================================
 # Este arquivo NÃO tem placeholder nenhum — nunca precisa ser editado nem
-# "instanciado". Toda a configuração (projetos, região, worker pools, branch,
-# etc.) vem de `vars.env`, lido do zero em cada execução pelo job
-# `load-config` e repassado aos outros jobs via `needs.load-config.outputs`.
+# "instanciado". A configuração de projetos/região/worker pools vem de
+# `vars.env`, lido do zero em cada execução pelo job `load-config` e
+# repassado aos outros jobs via `needs.load-config.outputs`. As branches que
+# disparam cada job (modelagem/main) são hardcoded direto no `if:` de cada
+# job, não vêm de vars.env — assim o roteamento não depende de conseguir ler
+# o arquivo de variáveis.
 #
 # `apply-vars.sh` também roda dentro dos jobs de treino, mas só para resolver
 # os placeholders de arquivos que o Cloud Build lê como texto puro
@@ -21,29 +24,26 @@
 #   - workload_identity_provider_gcp e service_account_gcp (autenticação via
 #     Workload Identity Federation)
 #
-# TEMPLATE_DIR (abaixo): premissa deste template — ele vive dentro da
-# subpasta 'dataform-workflow' do repositório, não na raiz. A raiz do
-# repositório é do projeto Dataform (workflow_settings.yaml/definitions/ são
-# OBRIGADOS a ficar lá, exigência do próprio Dataform), então o template
-# inteiro (.cloudbuild/, pipelines/, apply-vars.sh, vars.env,
-# model-config.yaml) cede a raiz e fica em 'dataform-workflow/'. Se algum
-# produto não precisar dessa subpasta (repositório dedicado, sem Dataform
-# disputando a raiz), troque para '' aqui. Este arquivo (deploy.yml) é a
-# ÚNICA exceção à regra "nunca precisa editar" — o resto continua vindo de
-# vars.env. Importante: .github/workflows/deploy.yml em si TEM que continuar
-# na raiz do repositório — o GitHub só reconhece workflows ali, nunca dentro
-# de uma subpasta; não dá pra mover este arquivo junto com o resto.
+# dataform-workflow/ (hardcoded em todos os caminhos abaixo): premissa deste
+# template — ele vive dentro dessa subpasta do repositório, não na raiz. A
+# raiz do repositório é do projeto Dataform (workflow_settings.yaml/
+# definitions/ são OBRIGADOS a ficar lá, exigência do próprio Dataform),
+# então o template inteiro (.cloudbuild/, pipelines/, apply-vars.sh,
+# vars.env, model-config.yaml) cede a raiz e fica em 'dataform-workflow/'.
+# Este arquivo (deploy.yml) é a ÚNICA exceção à regra "nunca precisa editar"
+# — o resto continua vindo de vars.env. Importante:
+# .github/workflows/deploy.yml em si TEM que continuar na raiz do
+# repositório — o GitHub só reconhece workflows ali, nunca dentro de uma
+# subpasta; não dá pra mover este arquivo junto com o resto.
 # ==============================================================================
 name: MLOps Model Training Deployment
 
 on:
-  push:
-    tags:
-      - 'v*'
-  workflow_dispatch: {} # fallback manual (aba Actions → "Run workflow")
-
-env:
-  TEMPLATE_DIR: 'dataform-workflow'
+  # Dispara em QUALQUER push (branch ou tag) — o filtro de verdade é o `if:`
+  # de cada job, com os nomes de branch hardcoded ('modelagem'/'main') em vez
+  # de lidos de vars.env — evita depender da leitura do arquivo de variáveis
+  # só pra decidir se o workflow roda ou não.
+  push: {}
 
 jobs:
   # --------------------------------------------------------------------------
@@ -62,8 +62,6 @@ jobs:
       region: ${{ steps.vars.outputs.region }}
       workerpool_mdl: ${{ steps.vars.outputs.workerpool_mdl }}
       workerpool_inf: ${{ steps.vars.outputs.workerpool_inf }}
-      branch_name: ${{ steps.vars.outputs.branch_name }}
-      prod_branch_name: ${{ steps.vars.outputs.prod_branch_name }}
       cloudbuild_sa_nprd: ${{ steps.vars.outputs.cloudbuild_sa_nprd }}
       cloudbuild_sa_prd: ${{ steps.vars.outputs.cloudbuild_sa_prd }}
     steps:
@@ -79,7 +77,7 @@ jobs:
           # linha (CRLF/Windows) e espaços em branco no começo/fim do valor
           # (ex.: "CHAVE= valor" com espaço depois do "=" — sem isso, esse
           # espaço vaza pro comando gcloud e vira um argumento vazio).
-          VARS_FILE="${TEMPLATE_DIR:+$TEMPLATE_DIR/}vars.env"
+          VARS_FILE="dataform-workflow/vars.env"
 
           get_var() {
             grep -E "^$1=" "$VARS_FILE" | tail -n1 | cut -d'=' -f2- | tr -d '\r' \
@@ -91,8 +89,6 @@ jobs:
           REGION_VAL="$(get_var REGION)"
           WORKERPOOL_MDL_VAL="$(get_var WORKERPOOL_DEV)"
           WORKERPOOL_INF_VAL="$(get_var WORKERPOOL_PROD)"
-          BRANCH_NAME_VAL="$(get_var BRANCH_NAME)"
-          PROD_BRANCH_NAME_VAL="$(get_var PROD_BRANCH_NAME)"
           CLOUDBUILD_SA_NPRD_VAL="$(get_var CLOUDBUILD_SERVICE_ACCOUNT_NPRD)"
           CLOUDBUILD_SA_PRD_VAL="$(get_var CLOUDBUILD_SERVICE_ACCOUNT_PRD)"
 
@@ -106,8 +102,6 @@ jobs:
           echo "REGION             -> '$REGION_VAL'"
           echo "WORKERPOOL_DEV     -> '$WORKERPOOL_MDL_VAL'"
           echo "WORKERPOOL_PROD    -> '$WORKERPOOL_INF_VAL'"
-          echo "BRANCH_NAME        -> '$BRANCH_NAME_VAL'"
-          echo "PROD_BRANCH_NAME   -> '$PROD_BRANCH_NAME_VAL'"
           echo "CLOUDBUILD_SERVICE_ACCOUNT_NPRD -> '$CLOUDBUILD_SA_NPRD_VAL'"
           echo "CLOUDBUILD_SERVICE_ACCOUNT_PRD  -> '$CLOUDBUILD_SA_PRD_VAL'"
           echo "github.ref deste run -> '${{ github.ref }}'"
@@ -118,15 +112,13 @@ jobs:
           echo "region=$REGION_VAL" >> "$GITHUB_OUTPUT"
           echo "workerpool_mdl=$WORKERPOOL_MDL_VAL" >> "$GITHUB_OUTPUT"
           echo "workerpool_inf=$WORKERPOOL_INF_VAL" >> "$GITHUB_OUTPUT"
-          echo "branch_name=$BRANCH_NAME_VAL" >> "$GITHUB_OUTPUT"
-          echo "prod_branch_name=$PROD_BRANCH_NAME_VAL" >> "$GITHUB_OUTPUT"
           echo "cloudbuild_sa_nprd=$CLOUDBUILD_SA_NPRD_VAL" >> "$GITHUB_OUTPUT"
           echo "cloudbuild_sa_prd=$CLOUDBUILD_SA_PRD_VAL" >> "$GITHUB_OUTPUT"
 
   train-and-evaluate-mdl:
     name: Train and Evaluate Model (MDL)
     needs: load-config
-    if: github.ref == format('refs/heads/{0}', needs.load-config.outputs.branch_name)
+    if: github.ref == 'refs/heads/modelagem'
     runs-on: arc-runner-set-default-gcp-caixagithub-prod
     permissions:
       contents: read
@@ -137,9 +129,8 @@ jobs:
 
       - name: Resolve placeholders no workspace (sem commitar/dar push)
         run: |
-          prefix="${TEMPLATE_DIR:+$TEMPLATE_DIR/}"
-          chmod +x "${prefix}apply-vars.sh"
-          "${prefix}apply-vars.sh" "${prefix}vars.env" "${TEMPLATE_DIR:-.}"
+          chmod +x dataform-workflow/apply-vars.sh
+          dataform-workflow/apply-vars.sh dataform-workflow/vars.env dataform-workflow
 
       - name: Authenticate to Google Cloud
         id: auth
@@ -155,21 +146,20 @@ jobs:
 
       - name: Submit Cloud Build (implanta + dispara o Cloud Workflow) via Private Pool
         run: |
-          prefix="${TEMPLATE_DIR:+$TEMPLATE_DIR/}"
           gcloud builds submit \
             --project=${{ needs.load-config.outputs.project_id_mdl }} \
-            --config="${prefix}.cloudbuild/dev.yaml" \
+            --config=dataform-workflow/.cloudbuild/dev.yaml \
             --worker-pool="projects/${{ needs.load-config.outputs.project_id_mdl }}/locations/${{ needs.load-config.outputs.region }}/workerPools/${{ needs.load-config.outputs.workerpool_mdl }}" \
             --region=${{ needs.load-config.outputs.region }} \
             --service-account="${{ needs.load-config.outputs.cloudbuild_sa_nprd }}" \
-            "${TEMPLATE_DIR:-.}"
+            dataform-workflow
 
   train-and-evaluate-inf:
     name: Train and Evaluate Model (INF)
     needs: load-config
-    # Dispara em duas situações: tag v* (fluxo original) OU push na branch de
-    # produção configurada em PROD_BRANCH_NAME (ex.: main) — o que vier primeiro.
-    if: startsWith(github.ref, 'refs/tags/v') || github.ref == format('refs/heads/{0}', needs.load-config.outputs.prod_branch_name)
+    # Dispara em duas situações: tag v* (fluxo original) OU push na branch main
+    # — o que vier primeiro.
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
     runs-on: arc-runner-set-default-gcp-caixagithub-prod
     permissions:
       contents: read
@@ -180,9 +170,8 @@ jobs:
 
       - name: Resolve placeholders no workspace (sem commitar/dar push)
         run: |
-          prefix="${TEMPLATE_DIR:+$TEMPLATE_DIR/}"
-          chmod +x "${prefix}apply-vars.sh"
-          "${prefix}apply-vars.sh" "${prefix}vars.env" "${TEMPLATE_DIR:-.}"
+          chmod +x dataform-workflow/apply-vars.sh
+          dataform-workflow/apply-vars.sh dataform-workflow/vars.env dataform-workflow
 
       - name: Authenticate to Google Cloud
         id: auth
@@ -198,12 +187,11 @@ jobs:
 
       - name: Submit Cloud Build (implanta + dispara o Cloud Workflow) via Private Pool in INF Project
         run: |
-          prefix="${TEMPLATE_DIR:+$TEMPLATE_DIR/}"
           gcloud builds submit \
             --project=${{ needs.load-config.outputs.project_id_inf }} \
-            --config="${prefix}.cloudbuild/prod.yaml" \
+            --config=dataform-workflow/.cloudbuild/prod.yaml \
             --worker-pool="projects/${{ needs.load-config.outputs.project_id_inf }}/locations/${{ needs.load-config.outputs.region }}/workerPools/${{ needs.load-config.outputs.workerpool_inf }}" \
             --region=${{ needs.load-config.outputs.region }} \
             --service-account="${{ needs.load-config.outputs.cloudbuild_sa_prd }}" \
             --substitutions="_TAG_NAME=${{ github.ref_name }}" \
-            "${TEMPLATE_DIR:-.}"
+            dataform-workflow

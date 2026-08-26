@@ -51,7 +51,7 @@ Ou seja: **nenhum commit automático acontece nunca** — nem para preencher pla
 
 **Passo a passo:**
 1. Pelo navegador (ou por onde for mais conveniente — Fusion X, `git`, etc.): crie `vars.env` na raiz do repositório com o conteúdo de `vars.example.env` preenchido com os valores reais.
-2. Comite/dê push normalmente. Push numa branch dispara `train-and-evaluate-mdl` se `BRANCH_NAME` (dentro do `vars.env`) bater com a branch do push; `train-and-evaluate-inf` dispara em **duas** situações — uma tag `v*`, ou push na branch de `PROD_BRANCH_NAME` (ex.: `main`) — o que vier primeiro. Também dá pra disparar manualmente pela aba **Actions → MLOps Model Training Deployment → Run workflow**.
+2. Comite/dê push normalmente. Push na branch `modelagem` dispara `train-and-evaluate-mdl`; `train-and-evaluate-inf` dispara em **duas** situações — uma tag `v*`, ou push na branch `main` — o que vier primeiro. Essas branches são hardcoded no `if:` de cada job em `deploy.yml`, não vêm de `vars.env`. Não há disparo manual (`workflow_dispatch`) — só push.
 3. Acompanhe a aba **Actions**.
 
 Não precisa de nenhum secret além dos já existentes (`workload_identity_provider_gcp`, `service_account_gcp`) — como nada é commitado de volta, não existe a restrição do GitHub sobre alterar `.github/workflows/` (essa trava só se aplica quando o próprio Actions tenta dar push num arquivo de workflow; aqui isso nunca acontece).
@@ -95,8 +95,7 @@ O script copia todos os arquivos deste repositório para `../repositorio-do-novo
 | `__dataform_sa_prefix__` | `DATAFORM_SA_PREFIX` | `.cloudbuild/prod.yaml`, `model_promotion_workflow.yaml` | `sa-df-meuproduto` |
 | `__data_exchange_id__` | `DATA_EXCHANGE_ID` | `.cloudbuild/dev.yaml`, `.cloudbuild/prod.yaml`, `model_promotion_workflow.yaml` | `exchange_meuproduto` |
 | `__listing_id__` | `LISTING_ID` | `.cloudbuild/dev.yaml`, `.cloudbuild/prod.yaml`, `model_promotion_workflow.yaml` | `listing_meuproduto` |
-| — *(sem placeholder — só runtime)* | `BRANCH_NAME` | Lido em runtime por `deploy.yml` (job `load-config`), decide se `train-and-evaluate-mdl` roda naquele push | `meuproduto-model` |
-| — *(sem placeholder — só runtime)* | `PROD_BRANCH_NAME` | Lido em runtime por `deploy.yml` (job `load-config`), decide (junto com a tag `v*`) se `train-and-evaluate-inf` roda naquele push | `main` |
+| — *(hardcoded em `deploy.yml`, não em `vars.env`)* | branches `modelagem`/`main` | `if:` dos jobs `train-and-evaluate-mdl`/`train-and-evaluate-inf` — não são lidas de `vars.env` | `modelagem`, `main` |
 | — *(sem placeholder — só runtime)* | `WORKERPOOL_DEV` | Lido em runtime por `deploy.yml` (job `load-config`) | `workerpool-meuproduto-mdl` |
 | — *(sem placeholder — só runtime)* | `WORKERPOOL_PROD` | Lido em runtime por `deploy.yml` (job `load-config`) | `workerpool-meuproduto-inf` |
 | — *(sem placeholder — só runtime)* | `CLOUDBUILD_SERVICE_ACCOUNT_NPRD` | Lido em runtime por `deploy.yml` — passado como `--service-account` no `gcloud builds submit` do job MDL | `projects/prj-.../serviceAccounts/sa-cloudbuild-mdl@....iam.gserviceaccount.com` |
@@ -105,7 +104,7 @@ O script copia todos os arquivos deste repositório para `../repositorio-do-novo
 ## Três mecanismos de variável — não confunda os três
 
 1. **Placeholders `__CHAVE__`** (`model-config.yaml`, `.cloudbuild/*.yaml`, `pipeline.py`, `src/*.sql`, `model_promotion_workflow.yaml`): resolvidos pelo `apply-vars.sh` — em runtime, dentro do job de treino, a cada execução (uso recomendado); ou uma única vez, "congelados", se você usar `generate.sh`.
-2. **Chaves lidas direto de `vars.env` em runtime** (`BRANCH_NAME`, `PROD_BRANCH_NAME`, `WORKERPOOL_DEV`, `WORKERPOOL_PROD`, `CLOUDBUILD_SERVICE_ACCOUNT_NPRD`, `CLOUDBUILD_SERVICE_ACCOUNT_PRD`, e também `TRAIN_PROJECT_ID`/`SERVING_PROJECT_ID`/`REGION` no job `load-config`): nunca viram `__PLACEHOLDER__` em arquivo nenhum — `deploy.yml` extrai cada uma direto do arquivo (`grep`/`cut`) e usa o valor na hora.
+2. **Chaves lidas direto de `vars.env` em runtime** (`WORKERPOOL_DEV`, `WORKERPOOL_PROD`, `CLOUDBUILD_SERVICE_ACCOUNT_NPRD`, `CLOUDBUILD_SERVICE_ACCOUNT_PRD`, e também `TRAIN_PROJECT_ID`/`SERVING_PROJECT_ID`/`REGION` no job `load-config`): nunca viram `__PLACEHOLDER__` em arquivo nenhum — `deploy.yml` extrai cada uma direto do arquivo (`grep`/`cut`) e usa o valor na hora. As branches (`modelagem`/`main`) NÃO entram nesse mecanismo — são hardcoded direto no `if:` de cada job, justamente pra não depender de conseguir ler `vars.env` só pra decidir se o workflow roda.
 3. **`substitutions:` do Cloud Build** (dentro de `.cloudbuild/dev.yaml`/`prod.yaml`, ex.: `_REGION`, `_TAG_NAME`): esses `_VAR` do Cloud Build já vêm resolvidos pelo mecanismo 1 (via `apply-vars.sh`) antes do `gcloud builds submit`; a exceção é `_TAG_NAME`, que continua sendo passado por `--substitutions` a cada build (é a tag da release, varia a cada execução, não faz sentido vir de `vars.env`).
 
 ## Checklist antes do primeiro push
@@ -115,4 +114,4 @@ O script copia todos os arquivos deste repositório para `../repositorio-do-novo
 3. Se for usar o pipeline de treino BQML (`pipelines/pipeline.py`) como parte da esteira: troque `src/train_model.sql`/`evaluate_model.sql` pela tabela e pelas colunas de features/label do seu modelo real, e adicione um step que o chame (em `.cloudbuild/*.yaml` ou dentro do próprio Cloud Workflow) — nenhum dos dois faz isso automaticamente hoje.
 4. Configure os secrets do repositório: `workload_identity_provider_gcp` e `service_account_gcp` (usados por `deploy.yml` para autenticar via Workload Identity Federation). Não precisa de nenhum secret adicional — nada é commitado automaticamente.
 5. Confirme que os Worker Pools privados (`WORKERPOOL_DEV`/`WORKERPOOL_PROD`), as Service Accounts do Cloud Build (`CLOUDBUILD_SERVICE_ACCOUNT_NPRD`/`_PRD`, com permissão de rodar build nesse projeto) e o Cloud Workflow (`WORKFLOW_NAME`) já existem nos projetos de destino, ou provisione-os antes do primeiro push/tag — este template não os cria, só os referencia.
-6. Push numa branch cujo nome bate com `BRANCH_NAME` dispara o job de modelagem; push na branch de `PROD_BRANCH_NAME` (ex.: `main`) ou uma tag `v*` dispara o job de inferência/promoção — os dois gatilhos de produção convivem, use o que fizer sentido pro seu fluxo de branches.
+6. Push na branch `modelagem` dispara o job de modelagem; push na branch `main` ou uma tag `v*` dispara o job de inferência/promoção — os dois gatilhos de produção convivem. Esses nomes de branch são hardcoded em `deploy.yml` (não vêm de `vars.env`) — se seu fluxo usar outros nomes, edite o `if:` dos jobs `train-and-evaluate-mdl`/`train-and-evaluate-inf` direto.
