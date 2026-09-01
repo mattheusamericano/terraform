@@ -41,12 +41,14 @@ As roles concedidas hoje (`roles/storage.admin`, `roles/bigquery.admin`, `roles/
 | `project_id` | `string` | sim | Projeto GCP alvo de todos os recursos. |
 | `custom_roles` | `map(object({ role_id, title, description = optional(string,""), permissions, stage = optional(string,"GA") }))` | não (default `{}`) | Custom roles de projeto. Chave = referência usada como `"custom:<chave>"` em `iam_bindings`. |
 | `iam_bindings` | `map(object({ role, members, authoritative = optional(bool,false) }))` | não (default `{}`) | Concede uma role a uma lista de membros (grupos, usuários **ou Service Accounts já existentes**, no formato completo do GCP). Aditivo por padrão; `authoritative = true` usa `google_project_iam_binding`. |
+| `dataform_service_agent` | `object({ enabled = optional(bool,false), execution_service_account_email = optional(string,null), kms_project_id = optional(string,null) })` | não (default `{}`, ou seja `enabled = false`) | Liga/desliga (por projeto) as permissões que o Dataform Service Agent precisa: impersonar a SA de execução do Dataform — `roles/iam.serviceAccountTokenCreator` + `roles/iam.serviceAccountUser`, concedidos **na própria SA** informada em `execution_service_account_email` (obrigatório quando `enabled = true`); Developer Connect — `roles/developerconnect.gitProxyUser` + `roles/developerconnect.tokenAccessor`, em `var.project_id`; e, se `kms_project_id` for informado, `roles/cloudkms.cryptoKeyEncrypterDecrypter` nesse projeto externo. |
 
 ## Outputs
 
 | Nome | Descrição |
 |---|---|
 | `custom_role_ids` | Mapa `chave de custom_roles -> nome completo da role`. |
+| `dataform_service_agent_member` | Identidade do Dataform Service Agent (`serviceAccount:service-<PROJECT_NUMBER>@gcp-sa-dataform.iam.gserviceaccount.com`) quando `dataform_service_agent.enabled = true`; `null` caso contrário. |
 
 ## Exemplo mínimo
 
@@ -80,6 +82,12 @@ module "iam" {
       role    = "custom:data_engineer"
       members = ["group:g-data-engineers@empresa.com"]
     }
+  }
+
+  dataform_service_agent = {
+    enabled                          = true
+    execution_service_account_email  = "sa-df-meuproduto@meu-projeto-gcp.iam.gserviceaccount.com"
+    kms_project_id                   = "prj-hsm-services-prd"
   }
 }
 ```

@@ -24,6 +24,36 @@ variable "custom_roles" {
 }
 
 #
+# DATAFORM SERVICE AGENT
+#
+variable "dataform_service_agent" {
+  description = <<-EOT
+    Concede as permissões que o Dataform Service Agent (identidade gerenciada pelo Google, provisionada
+    quando dataform.googleapis.com é habilitada em var.project_id, no formato
+    "service-<PROJECT_NUMBER>@gcp-sa-dataform.iam.gserviceaccount.com") precisa pra operar:
+      - Impersonar a SA de execução do Dataform (roles/iam.serviceAccountTokenCreator +
+        roles/iam.serviceAccountUser, concedidos NA PRÓPRIA SA informada em
+        execution_service_account_email, não em var.project_id).
+      - Usar Developer Connect pra acessar o repositório Git via Secure Source Connection
+        (roles/developerconnect.gitProxyUser + roles/developerconnect.tokenAccessor, em var.project_id).
+      - Se houver, descriptografar com uma chave KMS de um projeto externo
+        (roles/cloudkms.cryptoKeyEncrypterDecrypter, em kms_project_id).
+    O número do projeto é resolvido via data.google_project — não precisa ser informado.
+  EOT
+  type = object({
+    enabled                         = optional(bool, false)
+    execution_service_account_email = optional(string, null) # e-mail da SA de execução do Dataform — obrigatório quando enabled = true
+    kms_project_id                  = optional(string, null) # projeto dono da chave KMS usada pelo Dataform, se houver (ex.: prj-hsm-services-prd) — omita/null se não usa CMEK externo
+  })
+  default = {}
+
+  validation {
+    condition     = !var.dataform_service_agent.enabled || var.dataform_service_agent.execution_service_account_email != null
+    error_message = "dataform_service_agent.execution_service_account_email é obrigatório quando dataform_service_agent.enabled = true."
+  }
+}
+
+#
 # GRANTS
 #
 variable "iam_bindings" {
