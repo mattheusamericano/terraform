@@ -22,3 +22,8 @@ output "cloudbuild_sa_ids" {
   description = "Mapa {chave => id} (resource id) das service accounts do Cloud Build."
   value       = { for key, sa in google_service_account.cloudbuild : key => sa.id }
 }
+
+output "cloudbuild_default_bucket_names" {
+  description = "Mapa {project_id => name} dos buckets padrão do Cloud Build (<project_id>_cloudbuild), um por projeto entre os worker pools."
+  value       = { for project_id, bucket in google_storage_bucket.cloudbuild_default : project_id => bucket.name }
+}

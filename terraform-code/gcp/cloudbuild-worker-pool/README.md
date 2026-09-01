@@ -8,6 +8,7 @@ Módulo Terraform para provisionar **Cloud Build Private Worker Pools** peerados
 - `google_service_account.cloudbuild` — uma SA por entrada de `worker_pool_settings` (bloco aninhado `service_account`), para uso em `service_account` do trigger/build
 - `google_project_iam_member.worker_pool_user` — concede `roles/cloudbuild.workerPoolUser` (com IAM Condition restringindo ao pool específico) aos principals listados em `worker_pool_users`, permitindo consumo cross-project do pool
 - `google_project_iam_member.cloudbuild_sa_roles` — concede à SA do Cloud Build cada role listada em `worker_pool_settings.*.service_account.roles`, no projeto correspondente
+- `google_storage_bucket.cloudbuild_default` — um bucket `<project_id>_cloudbuild` por projeto entre os worker pools (dedup automático — vários pools no mesmo projeto geram um único bucket); é o bucket que o Cloud Build usa por convenção para staging do source (`gcloud builds submit`)
 
 ## Como usar
 
@@ -73,6 +74,7 @@ module "cloudbuild_worker_pool" {
 | `worker_pool_states` | Mapa {chave => state} dos worker pools |
 | `cloudbuild_sa_emails` | Mapa {chave => email} das SAs (usar em `service_account` do trigger) |
 | `cloudbuild_sa_ids` | Mapa {chave => id} das SAs |
+| `cloudbuild_default_bucket_names` | Mapa {project_id => name} dos buckets `<project_id>_cloudbuild` |
 
 ## Observações
 
@@ -83,3 +85,4 @@ module "cloudbuild_worker_pool" {
 - **SA custom no build**: ao usar `cloudbuild_sa_emails[...]` em `service_account` do trigger, é obrigatório declarar `options.logging = CLOUD_LOGGING_ONLY` (ou `GCS_ONLY` com `logsBucket` próprio) no `cloudbuild.yaml`/trigger — o Cloud Build não aceita mais o log padrão gerenciado pelo Google quando a SA não é a `default`.
 - **Habilitar a API** `cloudbuild.googleapis.com` no projeto do pool antes do `apply` (via `project_service`/`module.project_services`, se a stack já tiver esse padrão) — fora do escopo deste módulo.
 - Já existe um módulo `service_account` genérico no repositório (`terraform-code/gcp/service_account/`, sem IAM embutido). Optamos por manter a SA aqui em vez de compor com aquele módulo, seguindo o mesmo precedente de `bq_dataset` (SA dedicada + IAM inline no próprio módulo), já que a SA do Cloud Build nasce e é usada exclusivamente dentro deste contexto.
+- **Bucket padrão do Cloud Build é por PROJETO, não por pool**: se dois pools de `worker_pool_settings` apontarem pro mesmo `project_id`, o módulo cria só **um** bucket `<project_id>_cloudbuild` (dedup em `locals.cloudbuild_default_buckets`) — criar um bucket por chave de pool faria dois resources tentarem gerenciar o mesmo nome globalmente único, quebrando o `plan`/`apply`. A `location` usada é a do primeiro pool encontrado para aquele projeto; se os pools do mesmo projeto tiverem `location` diferente entre si, ajuste manualmente qual deve prevalecer.

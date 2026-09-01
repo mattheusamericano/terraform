@@ -5,7 +5,7 @@ worker_pool_settings = {
     location   = "southamerica-east1"
 
     network_project_id = "prj-spoke-modelagem"
-    network_name        = "vpc-spoke-modelagem"
+    network_name       = "vpc-spoke-modelagem"
     # já existe range reservado (Private Services Access) anexado a essa VPC;
     # deixamos null para o Cloud Build alocar automaticamente um /29 dentro dele
     peered_network_ip_range = null

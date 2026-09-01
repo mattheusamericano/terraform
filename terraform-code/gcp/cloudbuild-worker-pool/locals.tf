@@ -28,4 +28,20 @@ locals {
       ]
     ]) : pair.id => pair
   }
+
+  # O bucket padrão do Cloud Build (gs://<project_id>_cloudbuild, usado por
+  # `gcloud builds submit` para staging do source quando --gcs-source-staging-dir
+  # não é informado) é por PROJETO, não por pool — um projeto pode ter mais de
+  # um worker pool (chaves diferentes de worker_pool_settings com o mesmo
+  # project_id). Dedup por project_id evita duas entradas tentando gerenciar o
+  # mesmo bucket em paralelo (mesmo nome, resource address diferente ->
+  # conflito no plan/apply). A location usada é a do primeiro pool encontrado
+  # para aquele projeto.
+  cloudbuild_default_buckets = {
+    for project_id in distinct([for settings in var.worker_pool_settings : settings.project_id]) :
+    project_id => [
+      for settings in var.worker_pool_settings : settings.location
+      if settings.project_id == project_id
+    ][0]
+  }
 }

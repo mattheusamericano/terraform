@@ -12,7 +12,7 @@ variable "worker_pool_settings" {
 
     # Rede privada (VPC peering) onde os workers do Cloud Build serão provisionados
     network_project_id = string
-    network_name        = string # nome da VPC (peered_network = projects/{network_project_id}/global/networks/{network_name})
+    network_name       = string # nome da VPC (peered_network = projects/{network_project_id}/global/networks/{network_name})
 
     # CIDR /29 explícito dentro do range já reservado via Private Services Access.
     # Deixe null (padrão) para o Cloud Build alocar automaticamente.
