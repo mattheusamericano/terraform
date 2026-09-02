@@ -5,7 +5,7 @@ Módulo Terraform para provisionar repositórios do **Dataform** integrados ao B
 ## Recursos criados
 
 - `google_service_account.dataform_sa` — cria a service account dedicada que o repositório Dataform usa para executar workspaces e workflows.
-- `google_dataform_repository.repository` (via `repository.tf`, provider `google-beta`) — cria o repositório Dataform propriamente dito, associado à service account criada, com suporte opcional a integração com um repositório Git remoto.
+- `google_dataform_repository.repository` (via `repository.tf`, provider `google-beta`) — cria o repositório Dataform propriamente dito, associado à service account criada, com suporte opcional a integração com um repositório Git remoto e a uma chave KMS (CMEK) via `kms_key_name`.
 - `google_project_iam_member.bq_data_editor` — concede `roles/bigquery.dataEditor` no projeto à service account do Dataform (leitura/escrita em tabelas).
 - `google_project_iam_member.bq_job_user` — concede `roles/bigquery.jobUser` no projeto à service account (executar jobs de query).
 - `google_project_iam_member.secret_accessor` — concede `roles/secretmanager.secretAccessor` no projeto à service account (acessar o token do Git armazenado no Secret Manager).
@@ -15,6 +15,8 @@ Módulo Terraform para provisionar repositórios do **Dataform** integrados ao B
 - `google_service_account_iam_member.dataform_sa_token_creator` — concede `roles/iam.serviceAccountTokenCreator` na service account do Dataform ao service agent da API do Dataform (`service-<project_number>@gcp-sa-dataform.iam.gserviceaccount.com`).
 - `google_service_account_iam_member.dataform_sa_user` — concede `roles/iam.serviceAccountUser` na service account do Dataform ao mesmo service agent, permitindo que a API do Dataform impersonifique a SA para rodar os workflows.
 - `google_project_iam_member.dataform_bigquery_viewer` — concede `roles/bigquery.dataViewer` no projeto fixo `bigdata-1744049006` à service account do Dataform (acesso de leitura a um projeto de Big Data compartilhado).
+- `google_kms_crypto_key_iam_member.dataform_service_agent_kms` — só criado quando `kms_key_name` é informado; concede `roles/cloudkms.cryptoKeyEncrypterDecrypter` **na própria chave KMS** ao service agent do Dataform (`service-<project_number>@gcp-sa-dataform.iam.gserviceaccount.com`), necessário pra ele conseguir usar CMEK no repositório e nos recursos filhos.
+- `time_sleep.iam_propagation` — um por entrada de `dataform_repository_settings`; espera `iam_propagation_wait` (default `60s`) depois do binding de KMS antes do repositório ser criado/atualizado, evitando falha intermitente de permissão por propagação de IAM. Quando `kms_key_name` não é informado, a espera é `0s` (no-op).
 
 ## Data sources utilizados
 
@@ -38,6 +40,9 @@ module "dataform" {
       labels = {
         time = "engenharia-de-dados"
       }
+
+      # opcional — omita/null se este repositório não usa CMEK
+      kms_key_name = "projects/prj-hsm-services-prd/locations/us-central1/keyRings/kr-dataform/cryptoKeys/key-dataform"
     }
   }
 }
@@ -47,7 +52,7 @@ module "dataform" {
 
 | Nome | Descrição | Tipo | Default | Obrigatório |
 |------|-----------|------|---------|:-----------:|
-| `dataform_repository_settings` | Mapa de repositórios Dataform a serem criados. `project_id` é o projeto onde o repositório e a service account são provisionados, `region` a localização do repositório, `sigla` um sufixo de nomenclatura, `service_account_id` o account ID da service account dedicada, `git_url`/`git_default_branch`/`git_secret_version` (opcionais) configuram a integração com um repositório Git remoto — só são aplicados se `git_url` for informado e não vazio — e `labels` os rótulos do repositório. | `map(object({ project_id = string, region = string, sigla = string, service_account_id = string, git_url = optional(string), git_default_branch = optional(string), git_secret_version = optional(string), labels = map(any) }))` | — | Sim |
+| `dataform_repository_settings` | Mapa de repositórios Dataform a serem criados. `project_id` é o projeto onde o repositório e a service account são provisionados, `region` a localização do repositório, `sigla` um sufixo de nomenclatura, `service_account_id` o account ID da service account dedicada, `git_url`/`git_default_branch`/`git_secret_version` (opcionais) configuram a integração com um repositório Git remoto — só são aplicados se `git_url` for informado e não vazio —, `labels` os rótulos do repositório, `kms_key_name` (opcional) o nome completo de uma chave KMS pra CMEK (deixe `null` se não usa) e `iam_propagation_wait` (opcional, default `"60s"`) o tempo de espera após conceder a role de KMS ao service agent, antes de criar/atualizar o repositório. | `map(object({ project_id = string, region = string, sigla = string, service_account_id = string, git_url = optional(string), git_default_branch = optional(string), git_secret_version = optional(string), labels = map(any), kms_key_name = optional(string, null), iam_propagation_wait = optional(string, "60s") }))` | — | Sim |
 
 ## Outputs
 
@@ -62,3 +67,4 @@ Este módulo não define outputs.
 - `workspace_compilation_overrides.default_database` é sempre definido como o próprio `project_id`, forçando as compilações do Dataform a usarem o projeto do repositório como banco padrão.
 - Há um acoplamento explícito e não configurável a um projeto de Big Data fixo (`bigdata-1744049006`) através de `google_project_iam_member.dataform_bigquery_viewer` — todo repositório criado por este módulo recebe automaticamente `roles/bigquery.dataViewer` nesse projeto, independentemente do `project_id` informado.
 - Os dois bindings sobre o service agent do Dataform (`dataform_sa_token_creator` e `dataform_sa_user`) são essenciais para que a API do Dataform consiga impersonificar a service account e executar workflows agendados; sem eles, execuções via workflow/release podem falhar por falta de permissão.
+- **CMEK (`kms_key_name`) e propagação de IAM**: quando informado, o módulo concede `roles/cloudkms.cryptoKeyEncrypterDecrypter` na própria chave ao service agent do Dataform e só então cria/atualiza o repositório (`depends_on = [time_sleep.iam_propagation]`), esperando `iam_propagation_wait` entre as duas coisas. Isso existe porque bindings de IAM não propagam instantaneamente — sem a espera, o `apply` pode falhar de forma intermitente com erro de permissão mesmo com o binding já criado no state. A chave precisa já existir (não é gerenciada por este módulo) e o identity/projeto dono dela precisa aceitar a concessão vinda de outro projeto (se for uma chave centralizada, como um projeto de KMS compartilhado).

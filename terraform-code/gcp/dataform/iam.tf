@@ -46,7 +46,7 @@ resource "google_project_iam_member" "dataform_bucket_user" {
 # Dataform Admin - Acesso direto ao repositório como admin ao SA
 resource "google_dataform_repository_iam_member" "sa_repository_admin" {
   for_each = var.dataform_repository_settings
-  
+
   provider   = google-beta
   project    = each.value["project_id"]
   region     = each.value["region"]
@@ -59,25 +59,51 @@ resource "google_dataform_repository_iam_member" "sa_repository_admin" {
 resource "google_service_account_iam_member" "dataform_sa_token_creator" {
   for_each = var.dataform_repository_settings
 
-  service_account_id    = google_service_account.dataform_sa[each.key].name
-  role                  = "roles/iam.serviceAccountTokenCreator"
-  member                = "serviceAccount:service-${data.google_project.project[each.key].number}@gcp-sa-dataform.iam.gserviceaccount.com"
+  service_account_id = google_service_account.dataform_sa[each.key].name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:service-${data.google_project.project[each.key].number}@gcp-sa-dataform.iam.gserviceaccount.com"
 }
 
 #Acesso ao SA da API do Dataform para rodar os workflows com sucesso
 resource "google_service_account_iam_member" "dataform_sa_user" {
   for_each = var.dataform_repository_settings
 
-  service_account_id    = google_service_account.dataform_sa[each.key].name
-  role                  = "roles/iam.serviceAccountUser"
-  member                = "serviceAccount:service-${data.google_project.project[each.key].number}@gcp-sa-dataform.iam.gserviceaccount.com"
+  service_account_id = google_service_account.dataform_sa[each.key].name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:service-${data.google_project.project[each.key].number}@gcp-sa-dataform.iam.gserviceaccount.com"
 }
 
- #Permissão de Data Viewer no projeto Big Data "engenharia-bigdata-prd"
- resource "google_project_iam_member" "dataform_bigquery_viewer" {
-  for_each   = var.dataform_repository_settings
+#Permissão de Data Viewer no projeto Big Data "engenharia-bigdata-prd"
+resource "google_project_iam_member" "dataform_bigquery_viewer" {
+  for_each = var.dataform_repository_settings
 
-  project         = "bigdata-1744049006"
-  role            = "roles/bigquery.dataViewer"
-  member          = "serviceAccount:${google_service_account.dataform_sa[each.key].email}"
- }
+  project = "bigdata-1744049006"
+  role    = "roles/bigquery.dataViewer"
+  member  = "serviceAccount:${google_service_account.dataform_sa[each.key].email}"
+}
+
+# Necessário quando kms_key_name é definido: o Dataform Service Agent precisa
+# descriptografar/criptografar com a chave pra poder usar CMEK no repositório
+# e nos recursos filhos (compilationResults, workflowInvocations, ...).
+resource "google_kms_crypto_key_iam_member" "dataform_service_agent_kms" {
+  for_each = { for k, v in var.dataform_repository_settings : k => v if v.kms_key_name != null }
+
+  crypto_key_id = each.value.kms_key_name
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:service-${data.google_project.project[each.key].number}@gcp-sa-dataform.iam.gserviceaccount.com"
+}
+
+# Dá tempo do binding acima propagar antes do Dataform tentar usar a chave na
+# criação/atualização do repositório (repository.tf) — evita falha
+# intermitente de permissão. Sempre existe (um por chave de
+# dataform_repository_settings) mas só "espera de verdade" quando
+# kms_key_name está definido; sem CMEK a duração é 0s (no-op).
+resource "time_sleep" "iam_propagation" {
+  for_each = var.dataform_repository_settings
+
+  create_duration = each.value.kms_key_name != null ? each.value.iam_propagation_wait : "0s"
+
+  depends_on = [
+    google_kms_crypto_key_iam_member.dataform_service_agent_kms,
+  ]
+}
