@@ -1,5 +1,5 @@
 # ==============================================================================
-# TEMPLATE — Cloud Build: Ambiente de Desenvolvimento / Modelagem (MDL)
+# Cloud Build: Ambiente de Desenvolvimento / Modelagem (MDL)
 # ==============================================================================
 # Mesmo fluxo do .cloudbuild/prod.yaml (implanta e dispara o Cloud Workflow de
 # promoção — compila Dataform e publica o listing no Analytics Hub), só que
@@ -11,10 +11,9 @@
 # Os parâmetros do ambiente (project_id, dataset, pipeline_root,
 # service_account) vêm de model-config.yaml, não deste arquivo.
 #
-# Os demais valores são declarados em `substitutions:` abaixo. Preencha os
-# defaults com os dados do seu produto (ou use generate.sh + vars.example.env
-# para preencher tudo de uma vez). Também podem ser sobrescritos por build,
-# sem editar este arquivo:
+# Os demais valores são declarados em `substitutions:` abaixo — preenchidos em
+# tempo de execução a partir de vars.env (ver deploy.yml/apply-vars.sh).
+# Também podem ser sobrescritos por build, sem editar este arquivo:
 #   gcloud builds submit --config=.cloudbuild/dev.yaml \
 #     --substitutions=_REGION=us-central1 .
 # ==============================================================================
@@ -113,7 +112,6 @@ steps:
             'service_account': service_account,
             'dataform_service_account': f'${_DATAFORM_SA_PREFIX_TRAIN}@{project_id}.iam.gserviceaccount.com',
             'git_commitish': 'modelagem',  # branch do repo Dataform correspondente ao ambiente de modelagem
-            'trigger_id': '',
             'publish_to_hub': False,  # modelagem só compila/roda o Dataform, não publica no Analytics Hub
             'project_id_hub': '${_HUB_PROJECT_ID}',
             'data_exchange_id': '${_DATA_EXCHANGE_ID}',

@@ -1,15 +1,14 @@
 # ==============================================================================
-# TEMPLATE — Cloud Build: Ambiente de Produção / Inferência (INF)
+# Cloud Build: Ambiente de Produção / Inferência (INF)
 # ==============================================================================
 # O projeto de destino vem de $PROJECT_ID (variável nativa do Cloud Build,
 # definida pela flag --project de quem dispara o build — ver deploy.yml).
 # Os parâmetros do ambiente de produção do modelo (project_id, dataset,
 # pipeline_root, service_account) vêm de model-config.yaml, não deste arquivo.
 #
-# Os demais valores são declarados em `substitutions:` abaixo. Preencha os
-# defaults com os dados do seu produto (ou use generate.sh + vars.example.env
-# para preencher tudo de uma vez). Também podem ser sobrescritos por build,
-# sem editar este arquivo:
+# Os demais valores são declarados em `substitutions:` abaixo — preenchidos em
+# tempo de execução a partir de vars.env (ver deploy.yml/apply-vars.sh).
+# Também podem ser sobrescritos por build, sem editar este arquivo:
 #   gcloud builds submit --config=.cloudbuild/prod.yaml \
 #     --substitutions=_TAG_NAME=v2.0.0 .
 # ==============================================================================
@@ -108,7 +107,6 @@ steps:
             'service_account': service_account,
             'dataform_service_account': f'${_DATAFORM_SA_PREFIX_SERVING}@{project_id}.iam.gserviceaccount.com',
             'git_commitish': 'main',  # branch do repo Dataform correspondente ao ambiente de produção
-            'trigger_id': '',  # Desativado pois o deploy agora é nativo ao final do pipeline da Vertex
             'publish_to_hub': True,  # produção publica o listing no Analytics Hub ao final do Dataform
             'project_id_hub': '${_HUB_PROJECT_ID}',
             'data_exchange_id': '${_DATA_EXCHANGE_ID}',

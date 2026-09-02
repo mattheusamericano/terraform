@@ -7,9 +7,9 @@ __pycache__
 **/*.pyd
 .DS_Store
 
-# Ferramentas de instanciação do template — não são usadas pelo Cloud Build,
-# não precisam ser enviadas junto com o source do build.
-generate.sh
+# Arquivos de configuração/documentação da esteira — não são usados pelo
+# Cloud Build em si (apply-vars.sh já rodou antes, no workspace do runner),
+# não precisam ser enviados junto com o source do build.
 apply-vars.sh
 vars.example.env
 README.md

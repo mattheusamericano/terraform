@@ -53,16 +53,23 @@ main:
     # ==========================================================================
     # 💾 ETAPA 1: ORQUESTRAÇÃO DE DADOS (DATAFORM)
     # ==========================================================================
-    - set_dataform_env: 
+    - set_dataform_env_default:
+        # Garante que dataform_env sempre tem um valor, mesmo se git_commitish
+        # vier diferente de "modelagem"/"main" (ex.: execução manual com outra
+        # branch/tag/commit) — sem isso, compile_dataform quebraria com erro
+        # de variável indefinida em vez de só usar o próprio git_commitish.
+        assign:
+          - dataform_env: ${git_commitish}
+
+    - set_dataform_env:
         switch:
           - condition: '${git_commitish == "modelagem"}'
             assign:
               - dataform_env: "modelagem"
-        
           - condition: '${git_commitish == "main"}'
             assign:
               - dataform_env: "inferencia"
-        
+
     - compile_dataform:
         try:
           call: http.post
