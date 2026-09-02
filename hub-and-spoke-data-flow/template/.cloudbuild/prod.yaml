@@ -20,7 +20,6 @@ substitutions:
   _WORKFLOW_NAME: '__workflow_name__'
   _WORKFLOW_SOURCE_FILE: 'pipelines/model_promotion_workflow.yaml'
   _DATAFORM_REPOSITORY_ID: '__dataform_repository_id__'
-  _DATAFORM_GIT_COMMITISH: '__dataform_git_commitish__'
   _DATAFORM_SA_PREFIX: '__dataform_sa_prefix__'
   _ARTIFACT_REGISTRY_INDEX_URL: '__artifact_registry_index_url__'
   _HUB_PROJECT_ID: '__hub_project_id__'
@@ -108,7 +107,7 @@ steps:
             'template_uri': template_uri,
             'service_account': service_account,
             'dataform_service_account': f'${_DATAFORM_SA_PREFIX}@{project_id}.iam.gserviceaccount.com',
-            'git_commitish': '${_DATAFORM_GIT_COMMITISH}',
+            'git_commitish': 'main',  # branch do repo Dataform correspondente ao ambiente de produção
             'trigger_id': '',  # Desativado pois o deploy agora é nativo ao final do pipeline da Vertex
             'publish_to_hub': True,  # produção publica o listing no Analytics Hub ao final do Dataform
             'project_id_hub': '${_HUB_PROJECT_ID}',

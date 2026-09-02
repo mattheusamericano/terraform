@@ -17,7 +17,7 @@ main:
           - template_uri: ${map.get(input, "template_uri")}
           - service_account: ${map.get(input, "service_account")}
           - dataform_service_account: ${map.get(input, "dataform_service_account")}
-          - git_commitish: ${default(map.get(input, "git_commitish"), "__dataform_git_commitish__")}
+          - git_commitish: ${map.get(input, "git_commitish")}
           # --- Variáveis do Analytics Hub (só obrigatórias se publish_to_hub=true) ---
           - ah_location: ${default(map.get(input, "ah_location"), "__region__")}
           - data_exchange_id: ${map.get(input, "data_exchange_id")}
@@ -30,6 +30,7 @@ main:
           - missing: ${if(dataset_id == null, list.concat(missing, "dataset_id"), missing)}
           - missing: ${if(repository_id == null, list.concat(missing, "repository_id"), missing)}
           - missing: ${if(dataform_service_account == null, list.concat(missing, "dataform_service_account"), missing)}
+          - missing: ${if(git_commitish == null, list.concat(missing, "git_commitish"), missing)}
           - missing: ${if(publish_to_hub and project_id_hub == null, list.concat(missing, "project_id_hub"), missing)}
           - missing: ${if(publish_to_hub and data_exchange_id == null, list.concat(missing, "data_exchange_id"), missing)}
           - missing: ${if(publish_to_hub and listing_id == null, list.concat(missing, "listing_id"), missing)}
