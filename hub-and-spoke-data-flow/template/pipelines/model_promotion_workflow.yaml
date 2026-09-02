@@ -1,43 +1,3 @@
-# ==============================================================================
-# Cloud Workflow: promoção de modelo em produção
-# ==============================================================================
-# Este workflow, hoje, coordena só a parte de dados:
-# 1. Compilação e execução do pipeline de engenharia de dados (Dataform em Prod)
-# 2. Publicação do listing correspondente no Analytics Hub
-#
-# `pipeline_root`, `template_uri` e `service_account` (abaixo, em
-# init_variables) são recebidos do .cloudbuild/prod.yaml mas NÃO são usados em
-# nenhum step deste workflow — ficam aqui como reserva para o dia em que este
-# workflow também disparar um pipeline de treino/deploy do Vertex AI (usando
-# o `pipeline.json` gerado a partir de `pipeline_root`/`template_uri`). Não há
-# hoje nenhum step aqui nem em `prod.yaml`/`dev.yaml` que rode esse pipeline.
-#
-# Este mesmo arquivo é implantado em DOIS projetos diferentes (spoke de
-# modelagem via dev.yaml, spoke de produção via prod.yaml) — por isso os
-# campos que determinam EM QUAL PROJETO o workflow escreve (project_id,
-# repository_id, dataform_service_account, e project_id_hub/data_exchange_id/
-# listing_id quando publish_to_hub=true) são OBRIGATÓRIOS no input, sem
-# fallback. dev.yaml e prod.yaml sempre passam esses valores explicitamente
-# via `--data=`; se o workflow rodar sem eles (ex.: "Execute again" no
-# Console sem preencher input), ele falha alto e claro em vez de usar um
-# valor padrão — um fallback aqui seria perigoso, porque a instância
-# implantada no projeto de modelagem poderia silenciosamente acabar
-# escrevendo no projeto de produção (ou vice-versa).
-# `location`/`ah_location`/`git_commitish` não determinam o projeto, então
-# mantêm um default seguro para facilitar teste manual.
-#
-# `publish_to_hub` (bool): controla se a ETAPA 2 (Analytics Hub) roda depois
-# do Dataform. dev.yaml manda `false` (modelagem só compila/roda o Dataform,
-# não publica nada) e prod.yaml manda `true`. Default seguro = false — se
-# omitido, o workflow só faz o Dataform e não tenta publicar.
-#
-# check_missing_inputs/validate_required_inputs (logo abaixo): se faltar
-# algum campo obrigatório, a mensagem de erro já lista pelo nome exatamente
-# quais campos vieram null — não precisa adivinhar. Para achar a causa raiz
-# (qual placeholder não foi preenchido), veja o log do step
-# trigger-cloud-workflow-async em dev.yaml/prod.yaml no Cloud Build: ele
-# imprime "Inputs: {...}" com o JSON completo enviado, antes de disparar.
-# ==============================================================================
 
 main:
   params: [input]
@@ -92,6 +52,16 @@ main:
     # ==========================================================================
     # 💾 ETAPA 1: ORQUESTRAÇÃO DE DADOS (DATAFORM)
     # ==========================================================================
+    - set_dataform_env: 
+        switch:
+          - condition: '${git_commitish == "modelagem"}'
+            assign:
+              - dataform_env: "modelagem"
+        
+          - condition: '${git_commitish == "main"}'
+            assign:
+              - dataform_env: "inferencia"
+        
     - compile_dataform:
         try:
           call: http.post
@@ -101,6 +71,9 @@ main:
               type: OAuth2
             body:
               gitCommitish: ${git_commitish}
+              codeCompilationConfig:
+                vars:
+                  env: ${dataform_env}
           result: compile_res
         retry: ${http.default_retry}
 
