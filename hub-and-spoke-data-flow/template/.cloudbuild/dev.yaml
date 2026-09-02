@@ -25,7 +25,7 @@ substitutions:
   _WORKFLOW_NAME: '__workflow_name__'
   _WORKFLOW_SOURCE_FILE: 'pipelines/model_promotion_workflow.yaml'
   _DATAFORM_REPOSITORY_ID: '__dataform_repository_id__'
-  _DATAFORM_SA_PREFIX: '__dataform_sa_prefix__'
+  _DATAFORM_SA_PREFIX_TRAIN: '__dataform_sa_prefix_train__'
   _ARTIFACT_REGISTRY_INDEX_URL: '__artifact_registry_index_url__'
   _HUB_PROJECT_ID: '__hub_project_id__'
   _DATA_EXCHANGE_ID: '__data_exchange_id__'
@@ -111,7 +111,7 @@ steps:
             'pipeline_root': pipeline_root,
             'template_uri': template_uri,
             'service_account': service_account,
-            'dataform_service_account': f'${_DATAFORM_SA_PREFIX}@{project_id}.iam.gserviceaccount.com',
+            'dataform_service_account': f'${_DATAFORM_SA_PREFIX_TRAIN}@{project_id}.iam.gserviceaccount.com',
             'git_commitish': 'modelagem',  # branch do repo Dataform correspondente ao ambiente de modelagem
             'trigger_id': '',
             'publish_to_hub': False,  # modelagem só compila/roda o Dataform, não publica no Analytics Hub

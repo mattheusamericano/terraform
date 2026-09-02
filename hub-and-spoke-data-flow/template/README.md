@@ -56,7 +56,8 @@ Não precisa de nenhum secret além dos já existentes (`workload_identity_provi
 | `__artifact_registry_index_url__` | `ARTIFACT_REGISTRY_INDEX_URL` | `.cloudbuild/dev.yaml`, `.cloudbuild/prod.yaml` | URL do índice PyPI privado |
 | `__workflow_name__` | `WORKFLOW_NAME` | `.cloudbuild/prod.yaml` | `meuproduto-model-promotion-workflow` |
 | `__dataform_repository_id__` | `DATAFORM_REPOSITORY_ID` | `.cloudbuild/prod.yaml`, `model_promotion_workflow.yaml` | `df-repo-meuproduto` |
-| `__dataform_sa_prefix__` | `DATAFORM_SA_PREFIX` | `.cloudbuild/prod.yaml`, `model_promotion_workflow.yaml` | `sa-df-meuproduto` |
+| `__dataform_sa_prefix_train__` | `DATAFORM_SA_PREFIX_TRAIN` | `.cloudbuild/dev.yaml` | `sa-df-meuproduto-mdl` |
+| `__dataform_sa_prefix_serving__` | `DATAFORM_SA_PREFIX_SERVING` | `.cloudbuild/prod.yaml` | `sa-df-meuproduto-inf` |
 | `__data_exchange_id__` | `DATA_EXCHANGE_ID` | `.cloudbuild/dev.yaml`, `.cloudbuild/prod.yaml`, `model_promotion_workflow.yaml` | `exchange_meuproduto` |
 | `__listing_id__` | `LISTING_ID` | `.cloudbuild/dev.yaml`, `.cloudbuild/prod.yaml`, `model_promotion_workflow.yaml` | `listing_meuproduto` |
 | — *(hardcoded em `deploy.yml`, não em `vars.env`)* | branches `modelagem`/`main` | `if:` dos jobs `train-and-evaluate-mdl`/`train-and-evaluate-inf` | `modelagem`, `main` |
