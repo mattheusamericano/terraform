@@ -7,9 +7,19 @@ variable "sa_settings" {
     description  = optional(string, "Service Account gerenciada via Terraform")
     disabled     = optional(bool, false)
 
-    # Roles de projeto concedidas a esta SA (aditivo via google_project_iam_member).
-    # Cada SA do mapa pode ter uma lista de roles diferente. Concedida sempre no
-    # mesmo project_id da SA — para conceder role em outro projeto, use o iam_new.
+    # Roles de projeto concedidas a esta SA (aditivo via google_project_iam_member),
+    # sempre no mesmo project_id da SA. Cada SA do mapa pode ter uma lista de roles
+    # diferente.
     roles = optional(list(string), [])
+
+    # Roles concedidas a esta SA em projetos DIFERENTES do project_id da SA (aditivo
+    # via google_project_iam_member, um resource por combinação de projeto+role).
+    # Ex.: uma SA em prj-modelagem que precisa de roles/cloudkms.cryptoKeyEncrypterDecrypter
+    # em prj-hsm-services-prd. Quem roda o apply precisa já ter permissão de conceder
+    # IAM em cada project_id listado aqui (fora do escopo deste módulo).
+    cross_project_roles = optional(list(object({
+      project_id = string
+      role       = string
+    })), [])
   }))
 }

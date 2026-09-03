@@ -14,4 +14,20 @@ locals {
       ]
     ]) : pair.id => pair
   }
+
+  # Mesmo flatten, mas para sa_settings.*.cross_project_roles (project_id vem de
+  # cada entrada da lista, não de settings.project_id) — viabiliza o for_each do
+  # IAM cross-project em iam.tf.
+  sa_cross_project_role_bindings = {
+    for pair in flatten([
+      for key, settings in var.sa_settings : [
+        for cp in settings.cross_project_roles : {
+          id         = "${key}-${cp.project_id}-${cp.role}"
+          key        = key
+          project_id = cp.project_id
+          role       = cp.role
+        }
+      ]
+    ]) : pair.id => pair
+  }
 }

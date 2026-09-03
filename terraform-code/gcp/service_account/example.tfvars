@@ -28,4 +28,19 @@ sa_settings = {
     sigla      = "eng"
     # sem roles: só cria a identidade, sem nenhuma permissão de projeto
   }
+
+  "sa-dataform" = {
+    project_id = "prj-modelagem-des"
+    sigla      = "eng"
+
+    roles = [
+      "roles/dataform.editor",
+    ]
+
+    # roles em projetos diferentes de prj-modelagem-des
+    cross_project_roles = [
+      { project_id = "prj-hsm-services-prd", role = "roles/cloudkms.cryptoKeyEncrypterDecrypter" },
+      { project_id = "prj-bigdata-compartilhado", role = "roles/bigquery.dataViewer" },
+    ]
+  }
 }
