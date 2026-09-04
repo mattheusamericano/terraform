@@ -9,7 +9,7 @@ Módulo Terraform responsável por provisionar instâncias do **Vertex AI Workbe
 - `google_project_service_identity.notebooks_identity` — habilita/obtém o Service Agent do serviço `notebooks.googleapis.com` em cada projeto único presente em `workbench_settings`.
 - `google_project_service_identity.compute_identity` — habilita/obtém o Service Agent do serviço `compute.googleapis.com` em cada projeto único presente em `workbench_settings`.
 - `google_project_iam_member.workbench_sa_own_project_roles` — concede à SA de cada Workbench o conjunto de roles base do projeto (`roles/artifactregistry.writer`, `roles/bigquery.dataEditor`, `roles/bigquery.jobUser`, `roles/bigquery.user`, `roles/storage.objectUser`, `roles/osconfig.projectFeatureSettingsViewer`, `roles/aiplatform.user`, `roles/run.developer`, `roles/logging.logWriter`, `roles/serviceusage.serviceUsageViewer`, `roles/dataproc.editor`, `roles/dataproc.worker`) mais as roles extras definidas em `extra_project_roles`.
-- `google_project_iam_member.workbench_bigquery_viewer` — concede à SA de cada Workbench a role `roles/bigquery.dataViewer` em um projeto de Big Data fixo, com ID hardcoded `bigdata-1744049006`.
+- `google_project_iam_member.workbench_sa_cross_project_roles` — concede à SA de cada Workbench cada `{project_id, role}` listado em `cross_project_roles`, no projeto informado em cada entrada (diferente do projeto da instância). Zero, uma ou várias por Workbench.
 - `google_kms_crypto_key_iam_member.workbench_kms` — concede à SA de cada Workbench a role `roles/cloudkms.cryptoKeyEncrypterDecrypter` na chave KMS informada, necessária para que a instância consiga usar a chave CMEK.
 - `google_kms_crypto_key_iam_member.workbench_kms_notebook` — concede a mesma role de KMS ao Service Agent do Notebooks, por combinação única de projeto/KMS/região/keyring/chave.
 - `google_kms_crypto_key_iam_member.workbench_kms_compute` — concede a mesma role de KMS ao Service Agent do Compute Engine (`service-<project_number>@compute-system.iam.gserviceaccount.com`), por combinação única de projeto/KMS/região/keyring/chave.
@@ -45,6 +45,14 @@ module "workbench" {
       sa_account_id             = "sa-wb-01-sqa-prd"
       auto_shutdown             = "3600"
       extra_project_roles       = ["roles/secretmanager.secretAccessor"]
+
+      # opcional — omita pra usar só o default do módulo (bigquery.dataViewer em
+      # bigdata-1744049006). Se informar a lista, ela SUBSTITUI o default
+      # inteiro, então repita a entrada padrão junto se quiser mantê-la:
+      cross_project_roles = [
+        { project_id = "bigdata-1744049006", role = "roles/bigquery.dataViewer" },
+        { project_id = "prj-outro-compartilhado", role = "roles/storage.objectViewer" },
+      ]
 
       labels = {
         ambiente = "producao"
@@ -85,7 +93,9 @@ Cada entrada do mapa representa uma instância do Workbench (com sua respectiva 
 | `sa_account_id` | `string` | — | `account_id` da Service Account dedicada da instância. |
 | `auto_shutdown` | `optional(string, "3600")` | `"3600"` | Tempo de ociosidade (em segundos) até o desligamento automático (`idle-timeout-seconds`). |
 | `labels` | `map(any)` | — | Labels aplicadas à instância do Workbench. |
-| `extra_project_roles` | `optional(list(string), [])` | `[]` | Roles adicionais concedidas à Service Account da instância no próprio projeto, além do conjunto base fixo definido no módulo. |
+| `project_roles` | `optional(list(string), null)` | `null` | Conjunto de roles da SA no próprio projeto. `null` (padrão) usa o conjunto padrão do módulo (`local._sa_base_project_roles`, em `locals.tf`); uma lista aqui **substitui** esse padrão inteiro só para este Workbench (some com as roles padrão — combine com `extra_project_roles` se quiser manter as padrão e só adicionar). |
+| `extra_project_roles` | `optional(list(string), [])` | `[]` | Roles adicionais da SA no próprio projeto, somadas ao conjunto efetivo (`project_roles`, se informado, senão o padrão do módulo). |
+| `cross_project_roles` | `optional(list(object({ project_id = string, role = string })), [{ project_id = "bigdata-1744049006", role = "roles/bigquery.dataViewer" }])` | `[{ project_id = "bigdata-1744049006", role = "roles/bigquery.dataViewer" }]` | Roles concedidas à Service Account da instância em projetos diferentes do `project_id` dela — uma entrada por combinação de projeto+role. O default preserva o grant que antes era fixo no código; informar a lista **substitui** esse default inteiro (repita a entrada padrão se quiser mantê-la e só adicionar mais, ou passe `[]` pra remover o grant nesta instância). Quem roda o `apply` precisa já ter permissão de conceder IAM em cada `project_id` listado aqui. |
 | `wb_reservation_name` | `optional(string)` | `null` | Nome de uma reserva específica do Compute Engine a ser consumida pela instância (`reservation_affinity`). Quando informado, cria o bloco `reservation_affinity`. |
 | `wbrv_machine_type` | `optional(string)` | `null` | Declarado na variável, mas não é consumido em nenhum recurso do módulo atualmente. |
 | `wbrv_accelerator_type` | `optional(string)` | `null` | Tipo de acelerador (GPU) anexado à instância. Quando informado (não nulo/vazio), cria o bloco `accelerator_configs`. |
@@ -105,12 +115,12 @@ Cada entrada do mapa representa uma instância do Workbench (com sua respectiva 
 ## Observações
 
 - O nome final da instância segue o padrão `${chave}-${sigla}-${terraform.workspace}`; a `location` é montada como `${region}-${zone}` (ex.: `region = "us-central1"` e `zone = "c"` resultam em `us-central1-c`).
-- O módulo agrupa entradas de `workbench_settings` por chaves compostas para evitar a criação de recursos duplicados quando múltiplas instâncias compartilham o mesmo contexto:
-  - `unique_projects` (em `data.tf`) agrupa por `project_id`, usado para criar apenas um Service Agent (`notebooks_identity`, `compute_identity`) e um `data.google_project` por projeto, mesmo que existam várias instâncias no mesmo projeto.
-  - `kms_unique_bindings` (em `iam.tf`) agrupa por `project_id`+`kms_project_id`+`region`+`key_ring`+`key_crypto`, evitando conceder o mesmo IAM binding de KMS repetidamente para os Service Agents.
-  - `network_unique_bindings` (em `iam.tf`) agrupa por `network_project_id`+`region`+`name_subnet_vpc_shared`, evitando duplicar o binding de `roles/compute.networkUser` do Service Agent do Notebooks na mesma sub-rede.
-- Cada Service Account de instância recebe automaticamente, no próprio projeto, um conjunto fixo de 12 roles (leitura/escrita em BigQuery, Artifact Registry, Storage, Vertex AI, Cloud Run, logging, Dataproc, etc.) mais qualquer role adicional definida em `extra_project_roles`.
-- **Atenção**: o recurso `google_project_iam_member.workbench_bigquery_viewer` concede `roles/bigquery.dataViewer` a todas as SAs de Workbench em um projeto de Big Data **fixo no código** (`bigdata-1744049006`), independentemente do projeto configurado em `workbench_settings`. Isso é um valor hardcoded específico deste repositório/ambiente, não parametrizável via variáveis.
+- Todos os `locals` do módulo vivem em `locals.tf` (não em `iam.tf`/`data.tf`, que ficam só com `resource`/`data`). O módulo agrupa entradas de `workbench_settings` por chaves compostas para evitar a criação de recursos duplicados quando múltiplas instâncias compartilham o mesmo contexto:
+  - `unique_projects` agrupa por `project_id`, usado para criar apenas um Service Agent (`notebooks_identity`, `compute_identity`) e um `data.google_project` por projeto, mesmo que existam várias instâncias no mesmo projeto.
+  - `kms_unique_bindings` agrupa por `project_id`+`kms_project_id`+`region`+`key_ring`+`key_crypto`, evitando conceder o mesmo IAM binding de KMS repetidamente para os Service Agents.
+  - `network_unique_bindings` agrupa por `network_project_id`+`region`+`name_subnet_vpc_shared`, evitando duplicar o binding de `roles/compute.networkUser` do Service Agent do Notebooks na mesma sub-rede.
+- Cada Service Account de instância recebe automaticamente, no próprio projeto, o conjunto padrão de 12 roles do módulo (`local._sa_base_project_roles`: leitura/escrita em BigQuery, Artifact Registry, Storage, Vertex AI, Cloud Run, logging, Dataproc, etc.) mais qualquer role adicional definida em `extra_project_roles`. Se `project_roles` for informado numa entrada, ele **substitui** esse conjunto padrão só para aquela instância (o padrão do módulo não desaparece para as demais entradas) — `extra_project_roles` continua sendo somado por cima, seja qual for o conjunto base efetivo.
+- **Cross-project (`cross_project_roles`)**: para qualquer role que a SA da instância precise em um projeto diferente do seu (ex.: leitura num projeto de Big Data compartilhado). É só mais um `google_project_iam_member`, aditivo, igual `extra_project_roles` — a diferença é que o `project` do resource vem de cada entrada da lista, não de `workbench_settings.<chave>.project_id`. O **default** da variável já é `[{ project_id = "bigdata-1744049006", role = "roles/bigquery.dataViewer" }]` — o mesmo grant que antes era fixo no código — então nenhum `.tfvars` existente precisa mudar para manter esse comportamento. Como `optional()` substitui o default inteiro quando a lista é informada (não faz merge), quem quiser manter esse grant **e** adicionar outro precisa repetir a entrada padrão na lista (ver exemplo acima); quem quiser remover o grant nesta instância específica, passa `cross_project_roles = []`.
 - A criptografia de disco (boot e dados) é sempre feita via CMEK, usando a chave montada a partir de `kms_project_id`, `region`, `key_ring` e `key_crypto`; o módulo concede automaticamente a role de `cloudkms.cryptoKeyEncrypterDecrypter` tanto para a SA da instância quanto para os Service Agents do Notebooks e do Compute Engine sobre essa mesma chave.
 - A instância é conectada obrigatoriamente a uma Shared VPC (`network_project_id`/`name_vpc_shared`/`name_subnet_vpc_shared`) e não possui IP público (`disable_public_ip = true`); o módulo concede `roles/compute.networkUser` na sub-rede tanto para a SA da instância quanto para o Service Agent do Notebooks.
 - Os blocos `accelerator_configs` (GPU) e `reservation_affinity` são dinâmicos e só são criados quando `wbrv_accelerator_type`/`wb_reservation_name` são informados, respectivamente.

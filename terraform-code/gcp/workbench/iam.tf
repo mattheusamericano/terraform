@@ -1,53 +1,3 @@
-locals {
-  kms_unique_bindings = {
-    for k, v in var.workbench_settings :
-    "${v.project_id}||${v.kms_project_id}||${v.region}||${v.key_ring}||${v.key_crypto}" => v...
-  }
-
-  kms_unique_bindings_flat = {
-    for key, val in local.kms_unique_bindings :
-    key => val[0]
-  }
-
-  network_unique_bindings = {
-    for k, v in var.workbench_settings :
-    "${v.network_project_id}||${v.region}||${v.name_subnet_vpc_shared}" => v...
-  }
-
-  network_unique_bindings_flat = {
-    for key, val in local.network_unique_bindings :
-    key => val[0]
-  }
-
-  _sa_base_project_roles = [
-    "roles/artifactregistry.writer",
-    "roles/bigquery.dataEditor",
-    "roles/bigquery.jobUser",
-    "roles/bigquery.user",
-    "roles/storage.objectUser",
-    "roles/osconfig.projectFeatureSettingsViewer",
-    "roles/aiplatform.user",
-    "roles/run.developer",
-    "roles/logging.logWriter",
-    "roles/serviceusage.serviceUsageViewer",
-    "roles/dataproc.editor",
-    "roles/dataproc.worker",
-  ]
-
-  sa_own_project_iam_bindings = {
-    for pair in flatten([
-      for wb_key, wb in var.workbench_settings : [
-        for role in concat(local._sa_base_project_roles, wb.extra_project_roles) : {
-          key     = "${wb_key}||${role}"
-          project = wb.project_id
-          role    = role
-          wb_key  = wb_key
-        }
-      ]
-    ]) : pair.key => pair
-  }
-}
-
 # Todas as roles da SA no próprio projeto em um único recurso
 resource "google_project_iam_member" "workbench_sa_own_project_roles" {
   for_each = local.sa_own_project_iam_bindings
@@ -57,13 +7,15 @@ resource "google_project_iam_member" "workbench_sa_own_project_roles" {
   member  = google_service_account.workbench_sa[each.value.wb_key].member
 }
 
-#Permissão de Data Viewer no projeto Big Data "engenharia-bigdata-prd"
-resource "google_project_iam_member" "workbench_bigquery_viewer" {
-  for_each = var.workbench_settings
+# Roles cross-project da SA de cada Workbench, definidas em
+# workbench_settings.<chave>.cross_project_roles — zero, uma ou várias por
+# Workbench, cada uma em um projeto diferente do project_id da própria SA.
+resource "google_project_iam_member" "workbench_sa_cross_project_roles" {
+  for_each = local.sa_cross_project_iam_bindings
 
-  project = "bigdata-1744049006"
-  role    = "roles/bigquery.dataViewer"
-  member  = google_service_account.workbench_sa[each.key].member
+  project = each.value.project_id
+  role    = each.value.role
+  member  = google_service_account.workbench_sa[each.value.wb_key].member
 }
 
 #Permissão de criptografia (KMS) para Service Accounts
