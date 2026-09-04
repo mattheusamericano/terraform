@@ -68,3 +68,21 @@ resource "google_compute_subnetwork_iam_member" "ai-service-agent-role-network-s
   member     = "serviceAccount:${google_project_service_identity.notebooks_identity[each.value.project_id].email}"
   depends_on = [google_service_account.workbench_sa]
 }
+
+# Dá tempo dos bindings de IAM (KMS e sub-rede) acima propagarem antes do
+# Workbench ser criado (main.tf) — evita falha intermitente de permissão.
+resource "time_sleep" "iam_propagation" {
+  for_each = var.workbench_settings
+
+  create_duration = each.value.iam_propagation_wait
+
+  depends_on = [
+    google_project_iam_member.workbench_sa_own_project_roles,
+    google_project_iam_member.workbench_sa_cross_project_roles,
+    google_kms_crypto_key_iam_member.workbench_kms,
+    google_kms_crypto_key_iam_member.workbench_kms_notebook,
+    google_kms_crypto_key_iam_member.workbench_kms_compute,
+    google_compute_subnetwork_iam_member.ai-service-agent-role-network,
+    google_compute_subnetwork_iam_member.ai-service-agent-role-network-svc-agent,
+  ]
+}

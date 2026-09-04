@@ -53,5 +53,10 @@ variable "workbench_settings" {
     wbrv_machine_type      = optional(string)
     wbrv_accelerator_type  = optional(string)
     wbrv_accelerator_count = optional(number)
+
+    # Tempo de espera após os bindings de IAM (KMS e sub-rede) antes de criar a
+    # instância do Workbench — propagação de IAM não é instantânea; sem essa
+    # espera o apply pode falhar de forma intermitente por permissão.
+    iam_propagation_wait = optional(string, "60s")
   }))
 }

@@ -15,6 +15,7 @@ Módulo Terraform responsável por provisionar instâncias do **Vertex AI Workbe
 - `google_kms_crypto_key_iam_member.workbench_kms_compute` — concede a mesma role de KMS ao Service Agent do Compute Engine (`service-<project_number>@compute-system.iam.gserviceaccount.com`), por combinação única de projeto/KMS/região/keyring/chave.
 - `google_compute_subnetwork_iam_member.ai-service-agent-role-network` — concede à SA de cada Workbench a role `roles/compute.networkUser` na sub-rede da Shared VPC informada.
 - `google_compute_subnetwork_iam_member.ai-service-agent-role-network-svc-agent` — concede a mesma role `roles/compute.networkUser` ao Service Agent do Notebooks, por combinação única de projeto de rede/região/sub-rede.
+- `time_sleep.iam_propagation` — espera `iam_propagation_wait` (default `60s`) depois de todos os bindings de IAM acima (SA no projeto, cross-project, KMS, sub-rede) antes da instância do Workbench ser criada/atualizada, evitando falha intermitente de permissão por propagação de IAM.
 
 ## Data sources utilizados
 
@@ -100,6 +101,7 @@ Cada entrada do mapa representa uma instância do Workbench (com sua respectiva 
 | `wbrv_machine_type` | `optional(string)` | `null` | Declarado na variável, mas não é consumido em nenhum recurso do módulo atualmente. |
 | `wbrv_accelerator_type` | `optional(string)` | `null` | Tipo de acelerador (GPU) anexado à instância. Quando informado (não nulo/vazio), cria o bloco `accelerator_configs`. |
 | `wbrv_accelerator_count` | `optional(number)` | `null` | Quantidade de aceleradores (`core_count`) do tipo informado em `wbrv_accelerator_type`. |
+| `iam_propagation_wait` | `optional(string, "60s")` | `"60s"` | Tempo de espera após os bindings de IAM (SA, KMS, sub-rede) antes de criar/atualizar a instância do Workbench — evita falha intermitente de permissão por propagação de IAM. |
 
 ## Outputs
 
@@ -124,5 +126,5 @@ Cada entrada do mapa representa uma instância do Workbench (com sua respectiva 
 - A criptografia de disco (boot e dados) é sempre feita via CMEK, usando a chave montada a partir de `kms_project_id`, `region`, `key_ring` e `key_crypto`; o módulo concede automaticamente a role de `cloudkms.cryptoKeyEncrypterDecrypter` tanto para a SA da instância quanto para os Service Agents do Notebooks e do Compute Engine sobre essa mesma chave.
 - A instância é conectada obrigatoriamente a uma Shared VPC (`network_project_id`/`name_vpc_shared`/`name_subnet_vpc_shared`) e não possui IP público (`disable_public_ip = true`); o módulo concede `roles/compute.networkUser` na sub-rede tanto para a SA da instância quanto para o Service Agent do Notebooks.
 - Os blocos `accelerator_configs` (GPU) e `reservation_affinity` são dinâmicos e só são criados quando `wbrv_accelerator_type`/`wb_reservation_name` são informados, respectivamente.
-- `google_workbench_instance.instance` depende explicitamente da Service Account (`google_service_account.workbench_sa`) e do binding de KMS (`google_kms_crypto_key_iam_member.workbench_kms`), garantindo que a instância só seja criada após a SA existir e ter permissão de uso da chave.
+- **Propagação de IAM (`iam_propagation_wait`)**: `google_workbench_instance.instance` depende de `time_sleep.iam_propagation`, que por sua vez depende de todos os bindings de IAM relevantes (SA no projeto, cross-project, KMS — SA/Notebooks/Compute —, sub-rede) e só libera depois de esperar `iam_propagation_wait` (default `60s`). Isso existe porque bindings de IAM não propagam instantaneamente — sem a espera, o `apply` pode falhar de forma intermitente com erro de permissão mesmo com os bindings já criados no state.
 - Os campos `repository_name`, `workbench_members` e `wbrv_machine_type` estão declarados em `workbench_settings`, mas não são consumidos por nenhum recurso do módulo no estado atual do código (o bloco `container_image` que usaria `repository_name` está comentado em `main.tf`).

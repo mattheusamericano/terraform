@@ -62,9 +62,8 @@ resource "google_workbench_instance" "instance" {
     }
   }
 
-  depends_on = [
-    google_service_account.workbench_sa,
-    google_kms_crypto_key_iam_member.workbench_kms
-  ]
-
+  # time_sleep.iam_propagation já depende de todos os bindings de IAM
+  # relevantes (SA, KMS, sub-rede) e espera a propagação antes de liberar —
+  # ver iam.tf.
+  depends_on = [time_sleep.iam_propagation]
 }
