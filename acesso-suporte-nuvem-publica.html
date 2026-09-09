@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acesso e Suporte na Nuvem Pública</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Roboto:wght@400;500;700&display=swap">
+<style>
+  :root {
+    --bg: #F4F6F9;
+    --stage: #FFFFFF;
+    --ink: #161B22;
+    --ink-2: #4B5563;
+    --ink-3: #8A93A2;
+    --line: #D9DEE6;
+    --soft: #EEF2F7;
+    --ibm: #0F62FE;
+    --ibm-soft: #E5EEFF;
+    --ibm-ink: #0043CE;
+    --gcp: #1A73E8;
+    --gcp-soft: #E8F0FE;
+    --gcp-ink: #185ABC;
+    --good: #1E8E3E;
+    --warn: #B06000;
+    --crit: #C5221F;
+    --accent: var(--ibm);
+    --accent-soft: var(--ibm-soft);
+    --accent-ink: var(--ibm-ink);
+    --font-ui: "IBM Plex Sans", "Segoe UI", Helvetica, Arial, sans-serif;
+    --font-ibm: "IBM Plex Sans", "Segoe UI", Helvetica, Arial, sans-serif;
+    --font-gcp: "Roboto", "Segoe UI", Helvetica, Arial, sans-serif;
+    --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    --shadow: 0 20px 60px rgba(22, 27, 34, .12);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0F1216;
+      --stage: #171B21;
+      --ink: #F1F3F6;
+      --ink-2: #B4BCC8;
+      --ink-3: #7B8595;
+      --line: #2B323C;
+      --soft: #1F252D;
+      --ibm: #78A9FF;
+      --ibm-soft: #1B2A4A;
+      --ibm-ink: #A6C8FF;
+      --gcp: #8AB4F8;
+      --gcp-soft: #1C2D4A;
+      --gcp-ink: #AECBFA;
+      --good: #6DD58C;
+      --warn: #F7C56A;
+      --crit: #F28B82;
+      --shadow: 0 20px 60px rgba(0, 0, 0, .5);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0F1216;
+    --stage: #171B21;
+    --ink: #F1F3F6;
+    --ink-2: #B4BCC8;
+    --ink-3: #7B8595;
+    --line: #2B323C;
+    --soft: #1F252D;
+    --ibm: #78A9FF;
+    --ibm-soft: #1B2A4A;
+    --ibm-ink: #A6C8FF;
+    --gcp: #8AB4F8;
+    --gcp-soft: #1C2D4A;
+    --gcp-ink: #AECBFA;
+    --good: #6DD58C;
+    --warn: #F7C56A;
+    --crit: #F28B82;
+    --shadow: 0 20px 60px rgba(0, 0, 0, .5);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: 16px;
+    line-height: 1.45;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- Stage ---------- */
+  #viewport {
+    position: fixed; inset: 0;
+    display: grid; place-items: center;
+  }
+  #stage {
+    width: 1280px; height: 720px;
+    position: relative;
+    background: var(--stage);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    transform-origin: center center;
+  }
+  .slide {
+    position: absolute; inset: 0;
+    padding: 64px 80px 72px;
+    display: flex; flex-direction: column;
+    opacity: 0; visibility: hidden;
+    transform: translateX(24px);
+    transition: opacity .35s ease, transform .35s ease, visibility 0s linear .35s;
+  }
+  .slide.active {
+    opacity: 1; visibility: visible;
+    transform: none;
+    transition: opacity .35s ease, transform .35s ease, visibility 0s;
+  }
+  .slide.leaving-back { transform: translateX(-24px); }
+  @media (prefers-reduced-motion: reduce) {
+    .slide, .slide.active { transition: none; transform: none; }
+  }
+
+  [data-cloud="ibm"] { --accent: var(--ibm); --accent-soft: var(--ibm-soft); --accent-ink: var(--ibm-ink); font-family: var(--font-ibm); }
+  [data-cloud="gcp"] { --accent: var(--gcp); --accent-soft: var(--gcp-soft); --accent-ink: var(--gcp-ink); font-family: var(--font-gcp); }
+
+  /* ---------- Chrome ---------- */
+  .eyebrow {
+    font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 14px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .eyebrow::before { content: ""; width: 28px; height: 3px; background: var(--accent); border-radius: 2px; }
+  h1 { font-size: 56px; line-height: 1.08; font-weight: 700; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+  h2 { font-size: 36px; line-height: 1.15; font-weight: 600; margin: 0 0 28px; letter-spacing: -.01em; text-wrap: balance; }
+  h3 { font-size: 18px; font-weight: 600; margin: 0 0 8px; }
+  p { margin: 0; }
+  .lead { font-size: 22px; color: var(--ink-2); max-width: 44ch; }
+  .muted { color: var(--ink-3); }
+  .mono { font-family: var(--font-mono); font-size: .92em; }
+  .body { flex: 1; min-height: 0; }
+  .foot {
+    position: absolute; left: 80px; right: 80px; bottom: 28px;
+    font-size: 12.5px; color: var(--ink-3); display: flex; justify-content: space-between; gap: 24px;
+  }
+  .foot .src { max-width: 80ch; }
+
+  .cols { display: grid; gap: 40px; height: 100%; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .cols-32 { grid-template-columns: 3fr 2fr; }
+  .cols-23 { grid-template-columns: 2fr 3fr; }
+
+  ul.list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 14px; }
+  ul.list li { padding-left: 22px; position: relative; font-size: 18px; line-height: 1.4; }
+  ul.list li::before { content: ""; position: absolute; left: 0; top: 11px; width: 8px; height: 8px; background: var(--accent); border-radius: 50%; }
+  ul.list li b { font-weight: 600; }
+  ul.list.tight { gap: 8px; }
+  ul.list.tight li { font-size: 16px; }
+
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 10px 20px; font-size: 17px; align-content: start; }
+  .kv dt { color: var(--accent-ink); font-weight: 600; }
+  .kv dd { margin: 0; color: var(--ink-2); }
+
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: .04em; padding: 3px 9px; border-radius: 4px; background: var(--accent-soft); color: var(--accent-ink); vertical-align: middle; }
+
+  /* ---------- Brand (Sonda) ---------- */
+  .brand { display: inline-flex; align-items: center; gap: 10px; }
+  .brand .sonda-logo { height: 28px; width: auto; display: block; }
+  .brand .sonda-logo[hidden] { display: none; }
+  .brand .wordmark { font-family: var(--font-ibm); font-weight: 700; letter-spacing: .18em; font-size: 15px; color: var(--ink); }
+  .brand.big { position: absolute; top: 56px; left: 80px; }
+  .brand.big .sonda-logo { height: 44px; }
+  .brand.big .wordmark { font-size: 22px; }
+  .brand.corner { position: absolute; top: 34px; right: 80px; }
+  .brand.corner .sonda-logo { height: 22px; }
+  .brand.corner .wordmark { font-size: 12px; color: var(--ink-3); }
+  .slide.divider .brand .wordmark { color: rgba(255,255,255,.85); }
+  .slide.divider .brand .sonda-logo { filter: brightness(0) invert(1); }
+  .brand.has-logo .wordmark { display: none; }
+
+  /* ---------- Title ---------- */
+  .slide.title { justify-content: center; }
+  .slide.title .clouds { display: flex; gap: 14px; margin-top: 40px; }
+  .slide.title .pill {
+    display: inline-flex; align-items: center; gap: 10px; padding: 10px 18px; border-radius: 999px;
+    border: 1.5px solid var(--line); font-weight: 600; font-size: 16px;
+  }
+  .slide.title .pill i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+  .slide.title .meta { position: absolute; left: 80px; bottom: 56px; color: var(--ink-3); font-size: 14px; }
+
+  /* ---------- Divider ---------- */
+  .slide.divider { background: var(--accent); color: #fff; justify-content: flex-end; padding-bottom: 96px; }
+  .slide.divider .eyebrow { color: rgba(255,255,255,.85); }
+  .slide.divider .eyebrow::before { background: rgba(255,255,255,.85); }
+  .slide.divider h1 { color: #fff; font-size: 72px; }
+  .slide.divider .lead { color: rgba(255,255,255,.85); margin-top: 20px; }
+  .slide.divider .num {
+    position: absolute; right: 80px; top: 56px;
+    font-family: var(--font-mono); font-size: 200px; font-weight: 500; line-height: 1;
+    color: rgba(255,255,255,.14);
+  }
+  .slide.divider .foot { color: rgba(255,255,255,.7); }
+
+  /* ---------- Hierarchy diagrams ---------- */
+  .tree { display: flex; flex-direction: column; gap: 10px; }
+  .node {
+    border: 1.5px solid var(--line); border-radius: 8px; padding: 10px 14px;
+    background: var(--stage); display: flex; flex-direction: column; gap: 8px;
+  }
+  .node > .lbl { font-size: 13px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); display: flex; justify-content: space-between; align-items: baseline; }
+  .node > .lbl .n { font-family: var(--font-mono); font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ink-3); }
+  .node.root { border-color: var(--accent); background: var(--accent-soft); }
+  .node.root > .lbl { color: var(--accent-ink); }
+  .row { display: flex; gap: 10px; }
+  .row > .node { flex: 1; }
+  .node.soft { background: var(--soft); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { font-size: 12.5px; padding: 4px 8px; border-radius: 5px; background: var(--accent-soft); color: var(--accent-ink); font-weight: 500; white-space: nowrap; }
+  .chip.dim { background: var(--soft); color: var(--ink-2); }
+  .side { border: 1.5px dashed var(--line); border-radius: 8px; padding: 10px 14px; color: var(--ink-2); font-size: 14px; }
+  .side b { color: var(--ink); display: block; font-size: 13px; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 4px; }
+
+  /* ---------- Flow ---------- */
+  .flow { display: flex; align-items: stretch; gap: 0; margin: 8px 0 28px; }
+  .flow .step {
+    flex: 1; padding: 14px 16px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--stage);
+    position: relative;
+  }
+  .flow .step + .step { margin-left: 34px; }
+  .flow .step + .step::before {
+    content: ""; position: absolute; left: -26px; top: 50%; width: 18px; height: 2px; background: var(--ink-3);
+  }
+  .flow .step + .step::after {
+    content: ""; position: absolute; left: -12px; top: 50%; width: 8px; height: 8px;
+    border-top: 2px solid var(--ink-3); border-right: 2px solid var(--ink-3); transform: translateY(-50%) rotate(45deg);
+  }
+  .flow .step .k { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent-ink); font-weight: 600; margin-bottom: 4px; }
+  .flow .step .v { font-size: 16px; font-weight: 500; }
+  .flow .step .s { font-size: 13px; color: var(--ink-3); margin-top: 4px; }
+
+  /* ---------- Tables ---------- */
+  .tbl-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 15.5px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+  td.c, th.c { text-align: center; white-space: nowrap; }
+  td.na { color: var(--ink-3); }
+  .sev { display: inline-block; min-width: 26px; text-align: center; font-family: var(--font-mono); font-weight: 500; font-size: 13px; padding: 2px 6px; border-radius: 4px; color: #fff; }
+  .sev-1 { background: var(--crit); }
+  .sev-2 { background: var(--warn); }
+  .sev-3 { background: var(--accent); }
+  .sev-4 { background: var(--ink-3); }
+
+  .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .plans.four { grid-template-columns: repeat(4, 1fr); }
+  .plan { border: 1.5px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+  .plan.hi { border-color: var(--accent); }
+  .plan .name { font-weight: 600; font-size: 17px; margin-bottom: 4px; }
+  .plan .for { font-size: 13px; color: var(--ink-3); margin-bottom: 10px; }
+  .plan ul { margin: 0; padding-left: 16px; font-size: 14px; color: var(--ink-2); display: flex; flex-direction: column; gap: 4px; }
+
+  /* ---------- Sistemas ---------- */
+  .systems { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-content: start; }
+  .sys { border: 1.5px solid var(--line); border-left: 5px solid var(--accent); border-radius: 8px; padding: 18px 20px; display: flex; flex-direction: column; gap: 4px; }
+  .sys .sigla { font-family: var(--font-mono); font-size: 22px; font-weight: 500; color: var(--accent-ink); letter-spacing: .02em; }
+  .sys .nome { font-size: 15px; color: var(--ink-2); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+
+  .stack { display: flex; flex-direction: column; gap: 8px; }
+  .layer { display: grid; grid-template-columns: 52px 1fr; gap: 12px; align-items: center; border: 1.5px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .layer .ic { font-family: var(--font-mono); font-size: 13px; font-weight: 500; text-align: center; padding: 8px 0; border-radius: 6px; background: var(--accent-soft); color: var(--accent-ink); }
+  .layer b { display: block; font-size: 15.5px; font-weight: 600; }
+  .layer span:not(.ic) { display: block; font-size: 13.5px; color: var(--ink-2); }
+  .note { margin-top: 14px; font-size: 14px; color: var(--ink-2); border-left: 3px solid var(--warn); padding: 6px 12px; }
+  .note b { color: var(--ink); }
+
+  /* ---------- Checklist ---------- */
+  .check { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 32px; }
+  .check li { display: grid; grid-template-columns: 26px 1fr; gap: 12px; align-items: start; font-size: 17px; }
+  .check li i { width: 22px; height: 22px; border: 2px solid var(--accent); border-radius: 5px; margin-top: 2px; display: grid; place-items: center; }
+  .check li i::after { content: ""; width: 10px; height: 6px; border-left: 2.5px solid var(--accent); border-bottom: 2.5px solid var(--accent); transform: translateY(-1px) rotate(-45deg); }
+  .check li small { display: block; color: var(--ink-3); font-size: 14px; }
+
+  .principles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+  .principle { border-top: 3px solid var(--accent); padding-top: 14px; }
+  .principle .q { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+  .principle p { color: var(--ink-2); font-size: 15.5px; }
+
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; counter-reset: st; }
+  .stepcard { border: 1.5px solid var(--line); border-radius: 8px; padding: 18px; counter-increment: st; }
+  .stepcard::before { content: counter(st); font-family: var(--font-mono); font-size: 13px; color: var(--accent-ink); background: var(--accent-soft); padding: 2px 8px; border-radius: 4px; }
+  .stepcard h3 { margin-top: 12px; }
+  .stepcard p { color: var(--ink-2); font-size: 15px; }
+  .stepcard .two { display: grid; grid-template-columns: 1fr; gap: 6px; margin-top: 10px; font-size: 13.5px; }
+  .stepcard .two span { background: var(--soft); border-radius: 5px; padding: 6px 8px; color: var(--ink-2); }
+  .stepcard .two span b { display: block; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+  .stepcard .two span.i b { color: var(--ibm-ink); }
+  .stepcard .two span.g b { color: var(--gcp-ink); }
+
+  .refs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 40px; font-size: 15px; }
+  .refs a { color: var(--accent-ink); text-decoration: none; border-bottom: 1px solid var(--line); }
+  .refs a:hover, .refs a:focus-visible { border-color: var(--accent); outline: none; }
+  .refs .grp { font-size: 12.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; grid-column: 1 / -1; margin-top: 8px; }
+
+  /* ---------- HUD ---------- */
+  #hud {
+    position: fixed; left: 0; right: 0; bottom: 0; height: 4px; background: transparent; z-index: 5;
+  }
+  #hud .bar { height: 100%; width: 0; background: var(--accent); transition: width .3s ease; }
+  #nav {
+    position: fixed; right: 18px; bottom: 16px; z-index: 6;
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono); font-size: 13px; color: var(--ink-3);
+  }
+  #nav button {
+    width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--stage); color: var(--ink);
+    cursor: pointer; font-size: 16px; display: grid; place-items: center;
+  }
+  #nav button:hover { border-color: var(--accent); }
+  #nav button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #nav .count { margin: 0 8px; font-variant-numeric: tabular-nums; }
+  #sect {
+    position: fixed; left: 18px; bottom: 20px; z-index: 6;
+    font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 600;
+  }
+  #help {
+    position: fixed; top: 14px; right: 18px; z-index: 6; font-size: 12px; color: var(--ink-3);
+    font-family: var(--font-mono);
+  }
+  body.on-divider #help { display: none; }
+  #help kbd { border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; color: var(--ink-2); }
+
+  /* ---------- Print ---------- */
+  @media print {
+    body { overflow: visible; background: #fff; }
+    #viewport { position: static; display: block; }
+    #stage { transform: none !important; box-shadow: none; width: 1280px; height: 720px; page-break-after: always; overflow: visible; position: static; }
+    .slide { position: relative; opacity: 1 !important; visibility: visible !important; transform: none !important; height: 720px; page-break-after: always; page-break-inside: avoid; }
+    #hud, #nav, #sect, #help { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="viewport">
+<div id="stage">
+
+<!-- 1. Capa -->
+<section class="slide title" data-cloud="ibm" data-section="Introdução">
+  <div class="brand big"><img class="sonda-logo" src="" alt="Sonda" hidden><span class="wordmark">SONDA</span></div>
+  <p class="eyebrow">Onboarding Sonda · Nuvem pública na Caixa</p>
+  <h1>Acesso e suporte na nuvem pública</h1>
+  <p class="lead" style="margin-top:22px">Como as contas são organizadas, como você ganha acesso e a quem recorrer quando algo quebra — na IBM Cloud e no Google Cloud da Caixa.</p>
+  <div class="clouds">
+    <span class="pill"><i style="background:var(--ibm)"></i>IBM Cloud</span>
+    <span class="pill"><i style="background:var(--gcp)"></i>Google Cloud</span>
+  </div>
+  <p class="meta">Para empregados Sonda alocados na Caixa · Liderança técnica de nuvem pública · Setembro de 2026</p>
+</section>
+
+<!-- 2. Agenda -->
+<section class="slide" data-cloud="ibm" data-section="Introdução">
+  <p class="eyebrow">O que vamos ver</p>
+  <h2>Um mesmo roteiro, duas nuvens</h2>
+  <div class="body cols cols-2">
+    <div>
+      <h3 style="color:var(--ibm)">Parte 1 · IBM Cloud</h3>
+      <ul class="list">
+        <li>Hierarquia: enterprise, contas e resource groups</li>
+        <li>Como o acesso é concedido: IAM, access groups e políticas</li>
+        <li>Como pedir acesso na Caixa: Acesso Lógico, FICUS e login federado</li>
+        <li>Ferramentas do dia a dia, monitoramento centralizado e sistemas em produção</li>
+        <li>Suporte: planos, severidades e abertura de casos</li>
+        <li>Checklist de onboarding</li>
+      </ul>
+    </div>
+    <div data-cloud="gcp">
+      <h3 style="color:var(--gcp)">Parte 2 · Google Cloud</h3>
+      <ul class="list">
+        <li>Hierarquia: organização, pastas e projetos</li>
+        <li>Como o acesso é concedido: IAM, principais, papéis e herança</li>
+        <li>Ferramentas do dia a dia: console, gcloud, Terraform, auditoria</li>
+        <li>Suporte: Customer Care, prioridades e abertura de casos</li>
+        <li>Checklist de onboarding</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span>Ao final: o fluxo comum de "quando algo quebra" e as referências oficiais.</span></div>
+</section>
+
+<!-- 3. Por que importa -->
+<section class="slide" data-cloud="ibm" data-section="Introdução">
+  <p class="eyebrow">Antes de entrar em cada nuvem</p>
+  <h2>Quatro perguntas que toda estrutura de nuvem responde</h2>
+  <div class="body">
+    <div class="principles">
+      <div class="principle">
+        <div class="q">Onde o recurso vive?</div>
+        <p>A <b>hierarquia</b> define a que conta ou projeto um recurso pertence, quem paga por ele e até onde uma política se aplica.</p>
+      </div>
+      <div class="principle">
+        <div class="q">Quem pode fazer o quê?</div>
+        <p>O <b>IAM</b> liga uma identidade (pessoa, grupo ou serviço) a um papel sobre um escopo. Menor privilégio é a regra.</p>
+      </div>
+      <div class="principle">
+        <div class="q">Como eu sei que quebrou?</div>
+        <p><b>Auditoria e monitoramento</b> registram quem fez o quê e quando. Sem isso, o suporte começa às cegas.</p>
+      </div>
+      <div class="principle">
+        <div class="q">A quem eu peço ajuda?</div>
+        <p>O <b>suporte</b> tem planos, severidades e canais definidos. Saber usá-los bem reduz o tempo de indisponibilidade.</p>
+      </div>
+    </div>
+    <p class="lead" style="margin-top:44px;max-width:60ch">Os nomes mudam entre IBM Cloud e Google Cloud, mas as perguntas são as mesmas. Vamos respondê-las para cada uma.</p>
+  </div>
+</section>
+
+<!-- 4. Divider IBM -->
+<section class="slide divider" data-cloud="ibm" data-section="IBM Cloud">
+  <span class="num">01</span>
+  <p class="eyebrow">Parte 1</p>
+  <h1>IBM Cloud</h1>
+  <p class="lead">Enterprise, contas, resource groups e IAM — e como o Support Center funciona.</p>
+</section>
+
+<!-- 5. IBM hierarquia -->
+<section class="slide" data-cloud="ibm" data-section="IBM Cloud · Hierarquia">
+  <p class="eyebrow">Hierarquia de recursos</p>
+  <h2>Enterprise → contas → resource groups → recursos</h2>
+  <div class="body cols cols-32">
+    <div class="tree">
+      <div class="node root">
+        <div class="lbl"><span>Enterprise</span><span class="n">faturamento consolidado</span></div>
+        <div class="row">
+          <div class="node">
+            <div class="lbl"><span>Account group</span><span class="n">ex.: Produção</span></div>
+            <div class="row">
+              <div class="node soft">
+                <div class="lbl"><span>Conta</span></div>
+                <div class="chips"><span class="chip">RG: default</span><span class="chip">RG: app-core</span></div>
+              </div>
+              <div class="node soft">
+                <div class="lbl"><span>Conta</span></div>
+                <div class="chips"><span class="chip">RG: dados</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="node">
+            <div class="lbl"><span>Account group</span><span class="n">ex.: Não-produção</span></div>
+            <div class="row">
+              <div class="node soft">
+                <div class="lbl"><span>Conta</span></div>
+                <div class="chips"><span class="chip">RG: dev</span><span class="chip">RG: hml</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="node">
+        <div class="lbl"><span>Dentro de um resource group</span><span class="n">recursos</span></div>
+        <div class="chips">
+          <span class="chip dim">VPC</span><span class="chip dim">Kubernetes / OpenShift</span><span class="chip dim">Cloud Object Storage</span><span class="chip dim">Db2</span><span class="chip dim">Key Protect</span><span class="chip dim">Direct Link</span>
+        </div>
+      </div>
+    </div>
+    <dl class="kv">
+      <dt>Enterprise</dt><dd>Agrupa contas para faturamento consolidado e gestão centralizada. Nem toda organização usa; contas isoladas também funcionam.</dd>
+      <dt>Conta</dt><dd>Fronteira de IAM, faturamento e cotas. É onde usuários são convidados e onde políticas de acesso existem.</dd>
+      <dt>Resource group</dt><dd>Agrupamento lógico dentro da conta, usado como escopo de políticas. Cada recurso pertence a <b>um</b> RG e <b>não pode ser movido</b> depois de criado.</dd>
+      <dt>Região / zona</dt><dd>Localização física do recurso. Não faz parte da hierarquia de acesso, mas aparece no CRN e em quase todo caso de suporte.</dd>
+    </dl>
+  </div>
+  <div class="foot"><span class="src">Identificador universal: <span class="mono">crn:v1:bluemix:public:&lt;serviço&gt;:&lt;região&gt;:a/&lt;conta&gt;:&lt;instância&gt;::</span> — o CRN diz conta, serviço, região e instância.</span></div>
+</section>
+
+<!-- 6. IBM acesso -->
+<section class="slide" data-cloud="ibm" data-section="IBM Cloud · Acesso">
+  <p class="eyebrow">Como o acesso funciona</p>
+  <h2>IAM: quem, com qual papel, sobre qual escopo</h2>
+  <div class="body">
+    <div class="flow">
+      <div class="step"><div class="k">Sujeito</div><div class="v">Usuário (IBMid), Service ID ou Trusted Profile</div><div class="s">de preferência via <b>access group</b></div></div>
+      <div class="step"><div class="k">Política</div><div class="v">Access policy</div><div class="s">liga sujeito + papéis + escopo</div></div>
+      <div class="step"><div class="k">Papéis</div><div class="v">Plataforma e serviço</div><div class="s">Viewer · Operator · Editor · Administrator / Reader · Writer · Manager</div></div>
+      <div class="step"><div class="k">Escopo</div><div class="v">Conta, resource group, serviço ou instância</div><div class="s">quanto mais estreito, melhor</div></div>
+    </div>
+    <div class="cols cols-2" style="height:auto">
+      <div>
+        <h3>Identidades</h3>
+        <ul class="list tight">
+          <li><b>Usuário</b> — pessoa com IBMid, convidada para a conta (ou federada via IdP corporativo).</li>
+          <li><b>Service ID + API key</b> — identidade para automações e pipelines; a chave é o segredo.</li>
+          <li><b>Trusted Profile</b> — identidade assumida por workloads (clusters, VSIs) ou usuários federados, sem chave estática.</li>
+          <li><b>Access group</b> — coleção de usuários e Service IDs; a política é dada ao grupo, não à pessoa.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Papéis: dois planos</h3>
+        <ul class="list tight">
+          <li><b>Papéis de plataforma</b> controlam o ciclo de vida do recurso: criar, apagar, ver, atribuir acesso.</li>
+          <li><b>Papéis de serviço</b> controlam o uso do serviço: ler um bucket, escrever numa fila, gerenciar chaves.</li>
+          <li>Um mesmo usuário pode ser <span class="tag">Viewer</span> na plataforma e <span class="tag">Writer</span> no serviço.</li>
+          <li>Boas práticas: grupos por função, escopo por resource group, revisão periódica de chaves e Service IDs.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="src">Onde ver: Console → Manage → Access (IAM). Auditoria de quem fez o quê: IBM Cloud Logs (Activity Tracker events).</span></div>
+</section>
+
+<!-- 7. IBM acesso na Caixa -->
+<section class="slide" data-cloud="ibm" data-section="IBM Cloud · Acesso na Caixa">
+  <p class="eyebrow">Como conseguir acesso na Caixa</p>
+  <h2>Três passos até o seu perfil ficar completo</h2>
+  <div class="body">
+    <div class="flow" style="margin-bottom:34px">
+      <div class="step"><div class="k">1 · Acesso Lógico</div><div class="v">Solicite o grupo <span class="mono">CLOUD_IBM_PRODUCAO_SUPORTE</span></div><div class="s">na plataforma Acesso Lógico da Caixa — é o que libera a entrada na conta</div></div>
+      <div class="step"><div class="k">2 · FICUS no SISGSC</div><div class="v">Abra uma FICUS pedindo as permissões adicionais</div><div class="s">complementa o perfil com os access groups específicos da sua função</div></div>
+      <div class="step"><div class="k">3 · Login federado</div><div class="v"><span class="mono">cloud.ibm.com/authorize/caixa_tem</span></div><div class="s">sempre por este link; ele autentica você com as credenciais Caixa</div></div>
+    </div>
+    <div class="cols cols-2" style="height:auto">
+      <div>
+        <h3>O que acontece por trás</h3>
+        <ul class="list tight">
+          <li>O grupo do Acesso Lógico corresponde a um <b>access group</b> na conta IBM Cloud — é a política base, comum a todo o time de suporte de produção.</li>
+          <li>A FICUS é o registro formal das permissões extras: sem ela, você entra na conta mas não enxerga tudo o que precisa.</li>
+          <li>Se um link da IBM Cloud abrir sem os seus recursos, você provavelmente não está logado pelo <span class="mono">/authorize/caixa_tem</span>.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Antes de pedir</h3>
+        <ul class="list tight">
+          <li>Confirme com a liderança técnica quais permissões adicionais a sua função exige — a FICUS deve listá-las de forma objetiva.</li>
+          <li>Guarde os números das solicitações (Acesso Lógico e FICUS): eles são o histórico do seu perfil.</li>
+          <li>Tudo o que envolve IBM Cloud na Caixa está documentado na wiki: <span class="mono">wiki.suporte.caixa/index.php/IBM_Cloud</span>.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="src">Acesso Lógico e SISGSC são plataformas internas da Caixa; o link de login é o ponto de entrada federado da conta IBM Cloud da Caixa.</span></div>
+</section>
+
+<!-- 8. IBM dia a dia -->
+<section class="slide" data-cloud="ibm" data-section="IBM Cloud · Dia a dia">
+  <p class="eyebrow">Ferramentas do dia a dia</p>
+  <h2>Quatro portas de entrada para a mesma conta</h2>
+  <div class="body cols cols-2">
+    <div>
+      <dl class="kv">
+        <dt>Console</dt><dd>Entre por <span class="mono">cloud.ibm.com/authorize/caixa_tem</span>. O seletor de conta no topo define onde você está: confira conta e resource group antes de criar qualquer coisa.</dd>
+        <dt>CLI</dt><dd><span class="mono">ibmcloud login --sso</span> (federado) · <span class="mono">ibmcloud target -r &lt;região&gt; -g &lt;rg&gt;</span> · plugins por serviço (<span class="mono">is</span>, <span class="mono">ks</span>, <span class="mono">cos</span>).</dd>
+        <dt>Terraform</dt><dd>Provider <span class="mono">IBM-Cloud/ibm</span>, autenticado por API key de Service ID. Todo recurso recebe <span class="mono">resource_group_id</span> explícito.</dd>
+        <dt>API</dt><dd>Token IAM obtido a partir da API key; mesmas políticas do console. Útil para integrações e scripts.</dd>
+      </dl>
+    </div>
+    <div>
+      <h3>O que observar</h3>
+      <ul class="list tight">
+        <li><b>Monitoramento centralizado</b> — <span class="mono">cloud.ibm.com/observability/monitoring</span> reúne os principais serviços da Caixa em um só lugar. Faça login pelo <span class="mono">/authorize/caixa_tem</span> antes, senão o link não carrega os seus dados.</li>
+        <li><b>IBM Cloud Logs / Activity Tracker</b> — eventos de gerenciamento: quem criou, alterou ou apagou. Primeiro lugar a olhar em incidente.</li>
+        <li><b>Notificações da conta</b> — manutenções e incidentes planejados chegam por e-mail para quem tem a preferência ativada.</li>
+        <li><b>Status page</b> — <span class="mono">cloud.ibm.com/status</span>: verifique antes de abrir caso.</li>
+      </ul>
+      <h3 style="margin-top:22px">Acesso privado</h3>
+      <ul class="list tight">
+        <li><b>Virtual Private Endpoints (VPE)</b> — serviços da IBM alcançados pela rede privada da VPC.</li>
+        <li><b>Direct Link</b> — conectividade dedicada entre o datacenter e a IBM Cloud.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 9. IBM sistemas em produção -->
+<section class="slide" data-cloud="ibm" data-section="IBM Cloud · Produção na Caixa">
+  <p class="eyebrow">O que está em produção</p>
+  <h2>Seis sistemas da Caixa, uma mesma arquitetura de base</h2>
+  <div class="body cols cols-32">
+    <div class="systems">
+      <div class="sys"><span class="sigla">SICTM</span><span class="nome">CAIXA TEM</span></div>
+      <div class="sys"><span class="sigla">SIAPT</span><span class="nome">Trabalhador</span></div>
+      <div class="sys"><span class="sigla">SIFAM</span><span class="nome">Bolsa Família</span></div>
+      <div class="sys"><span class="sigla">SIFGM</span><span class="nome">FGTS</span></div>
+      <div class="sys"><span class="sigla">SIAME</span><span class="nome">Habitação</span></div>
+      <div class="sys"><span class="sigla">SIACM</span><span class="nome">Cartões</span></div>
+    </div>
+    <div>
+      <h3>Recursos padrão de cada sistema</h3>
+      <p class="muted" style="font-size:15px;margin-bottom:14px">Todo sistema em produção recebe o mesmo conjunto de recursos: aprendeu a operar um, sabe operar os outros.</p>
+      <div class="stack">
+        <div class="layer"><span class="ic">VM</span><div><b>Máquina virtual "config"</b><span>Faz o deploy das aplicações dentro do cluster. Sempre Red Hat Enterprise Linux.</span></div></div>
+        <div class="layer"><span class="ic">OCP</span><div><b>Cluster Red Hat OpenShift</b><span>Onde as aplicações do sistema rodam.</span></div></div>
+        <div class="layer"><span class="ic">DB2</span><div><b>Banco de dados Db2</b><span>Persistência do sistema.</span></div></div>
+        <div class="layer"><span class="ic">NET</span><div><b>Configurações de rede</b><span>VPC, sub-redes, regras de acesso e conectividade que ligam as três peças acima.</span></div></div>
+      </div>
+      <p class="note"><b>Regra da conta:</b> só é permitido criar VMs com sistema operacional Red Hat. Não existem VMs com outro SO na IBM Cloud da Caixa.</p>
+    </div>
+  </div>
+  <div class="foot"><span class="src">Documentação completa: <span class="mono">wiki.suporte.caixa/index.php/IBM_Cloud</span></span></div>
+</section>
+
+<!-- 10. IBM suporte -->
+<section class="slide" data-cloud="ibm" data-section="IBM Cloud · Suporte">
+  <p class="eyebrow">Suporte e operação</p>
+  <h2>Support Center: planos, severidades e resposta</h2>
+  <div class="body cols cols-23">
+    <div>
+      <div class="plans" style="grid-template-columns:1fr">
+        <div class="plan"><div class="name">Basic</div><div class="for">incluído em contas pay-as-you-go</div><ul><li>Casos apenas para conta e faturamento; sem objetivo de resposta</li><li>Documentação, fóruns e status page</li></ul></div>
+        <div class="plan"><div class="name">Advanced</div><div class="for">ambientes produtivos</div><ul><li>Casos técnicos com objetivo de resposta por severidade</li><li>Chat e telefone para Sev 1</li></ul></div>
+        <div class="plan hi"><div class="name">Premium</div><div class="for">cargas críticas</div><ul><li>Respostas mais rápidas, 24×7 para Sev 1</li><li>Technical Account Manager e revisões proativas</li></ul></div>
+      </div>
+    </div>
+    <div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Sev</th><th>Definição</th><th class="c">Premium</th><th class="c">Advanced</th><th class="c">Basic</th></tr></thead>
+          <tbody>
+            <tr><td><span class="sev sev-1">1</span></td><td>Serviço fora do ar ou função crítica inoperante</td><td class="c">&lt; 15 min</td><td class="c">1 h</td><td class="c na">—</td></tr>
+            <tr><td><span class="sev sev-2">2</span></td><td>Uso severamente restrito; risco a prazo de negócio</td><td class="c">1 h</td><td class="c">2 h</td><td class="c na">—</td></tr>
+            <tr><td><span class="sev sev-3">3</span></td><td>Serviço usável; impacto não significativo</td><td class="c">2 h</td><td class="c">4 h</td><td class="c na">—</td></tr>
+            <tr><td><span class="sev sev-4">4</span></td><td>Dúvida ou solicitação não técnica</td><td class="c">4 h</td><td class="c">8 h</td><td class="c na">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 style="margin-top:22px">Para abrir um caso</h3>
+      <ul class="list tight">
+        <li>Console → Help → <b>Support Center</b> → Create case. Precisa de papel <span class="tag">Editor</span> (ou superior) no serviço <em>Support Center</em>, atribuído via IAM.</li>
+        <li>Informe <b>CRN</b>, região, horário (com fuso), IDs de requisição e o que já foi verificado — inclusive a status page.</li>
+        <li>Escolha a severidade pelo impacto real; Sev 1 exige alguém disponível para acompanhar.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span class="src">Tempos são objetivos de resposta inicial publicados na documentação da IBM, não garantias contratuais; confirme o plano contratado na conta.</span></div>
+</section>
+
+<!-- 9. IBM checklist -->
+<section class="slide" data-cloud="ibm" data-section="IBM Cloud · Onboarding">
+  <p class="eyebrow">Checklist de onboarding</p>
+  <h2>Você está pronto para operar na IBM Cloud quando…</h2>
+  <div class="body">
+    <ul class="check">
+      <li><i></i><span>Tem o grupo CLOUD_IBM_PRODUCAO_SUPORTE aprovado no Acesso Lógico<small>É o que libera a entrada na conta da Caixa.</small></span></li>
+      <li><i></i><span>Abriu a FICUS no SISGSC e as permissões adicionais foram aplicadas<small>Sem ela o perfil fica incompleto.</small></span></li>
+      <li><i></i><span>Entra sempre por cloud.ibm.com/authorize/caixa_tem<small>Inclusive antes de abrir o painel de monitoramento.</small></span></li>
+      <li><i></i><span>Sabe em qual resource group cada projeto vive<small>E entende que o recurso não muda de RG depois.</small></span></li>
+      <li><i></i><span>Tem a CLI instalada e o login SSO funcionando<small><span class="mono">ibmcloud target</span> mostra conta, região e RG.</small></span></li>
+      <li><i></i><span>Tem papel Editor no Support Center<small>Sem isso, não consegue abrir casos técnicos.</small></span></li>
+      <li><i></i><span>Salvou o painel de monitoramento centralizado e a status page<small>cloud.ibm.com/observability/monitoring · cloud.ibm.com/status</small></span></li>
+      <li><i></i><span>Conhece os seis sistemas em produção e o padrão VM config + OpenShift + Db2 + rede<small>Detalhes de cada um na wiki: wiki.suporte.caixa/index.php/IBM_Cloud</small></span></li>
+      <li><i></i><span>Registra toda demanda como tarefa no board do time<small>Mudança sem tarefa é mudança invisível.</small></span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- 10. Divider GCP -->
+<section class="slide divider" data-cloud="gcp" data-section="Google Cloud">
+  <span class="num">02</span>
+  <p class="eyebrow">Parte 2</p>
+  <h1>Google Cloud</h1>
+  <p class="lead">Organização, pastas, projetos e IAM com herança — e como o Customer Care funciona.</p>
+</section>
+
+<!-- 11. GCP hierarquia -->
+<section class="slide" data-cloud="gcp" data-section="Google Cloud · Hierarquia">
+  <p class="eyebrow">Hierarquia de recursos</p>
+  <h2>Organização → pastas → projetos → recursos</h2>
+  <div class="body cols cols-32">
+    <div class="tree">
+      <div class="node root">
+        <div class="lbl"><span>Organização</span><span class="n">raiz · vinculada ao Cloud Identity</span></div>
+        <div class="row">
+          <div class="node">
+            <div class="lbl"><span>Pasta</span><span class="n">ex.: Produção</span></div>
+            <div class="row">
+              <div class="node soft"><div class="lbl"><span>Projeto</span><span class="n">app-core-prd</span></div><div class="chips"><span class="chip dim">GKE</span><span class="chip dim">Cloud SQL</span></div></div>
+              <div class="node soft"><div class="lbl"><span>Projeto</span><span class="n">dados-prd</span></div><div class="chips"><span class="chip dim">BigQuery</span><span class="chip dim">GCS</span></div></div>
+            </div>
+          </div>
+          <div class="node">
+            <div class="lbl"><span>Pasta</span><span class="n">ex.: Não-produção</span></div>
+            <div class="row">
+              <div class="node soft"><div class="lbl"><span>Projeto</span><span class="n">app-core-dev</span></div><div class="chips"><span class="chip dim">GKE</span></div></div>
+              <div class="node soft"><div class="lbl"><span>Projeto</span><span class="n">app-core-hml</span></div><div class="chips"><span class="chip dim">Cloud Run</span></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="side"><b>Conta de faturamento</b>Fica fora da árvore: cada projeto é <em>vinculado</em> a uma billing account. Sem vínculo, as APIs pagas não funcionam.</div>
+        <div class="side"><b>Políticas da organização</b>Restrições (Org Policy) descem pela árvore: domínios permitidos, regiões, IPs externos, chaves de service account.</div>
+      </div>
+    </div>
+    <dl class="kv">
+      <dt>Organização</dt><dd>Nó raiz de tudo. Existe uma por domínio corporativo; políticas e papéis aqui valem para toda a empresa.</dd>
+      <dt>Pasta</dt><dd>Agrupa projetos por área, ambiente ou time. Pode aninhar. É o lugar natural para políticas de IAM compartilhadas.</dd>
+      <dt>Projeto</dt><dd>Unidade de trabalho: habilita APIs, tem cotas, IAM e faturamento próprios. O <b>ID é imutável</b>; o número identifica o projeto nas APIs.</dd>
+      <dt>Recurso</dt><dd>Vive dentro de um projeto e pode ser global, regional ou zonal — a localização muda o que é possível ligar a quê.</dd>
+    </dl>
+  </div>
+  <div class="foot"><span class="src">Nome completo de um recurso: <span class="mono">//compute.googleapis.com/projects/&lt;id&gt;/zones/&lt;zona&gt;/instances/&lt;nome&gt;</span> — projeto e localização sempre aparecem.</span></div>
+</section>
+
+<!-- 12. GCP acesso -->
+<section class="slide" data-cloud="gcp" data-section="Google Cloud · Acesso">
+  <p class="eyebrow">Como o acesso funciona</p>
+  <h2>IAM: principal, papel, recurso — e a herança pela árvore</h2>
+  <div class="body">
+    <div class="flow">
+      <div class="step"><div class="k">Principal</div><div class="v">Usuário, grupo Google, service account ou identidade federada</div><div class="s">de preferência via <b>grupo</b></div></div>
+      <div class="step"><div class="k">Vínculo</div><div class="v">Allow policy (binding)</div><div class="s">principal + papel + condição opcional</div></div>
+      <div class="step"><div class="k">Papel</div><div class="v">Básico, predefinido ou personalizado</div><div class="s">ex.: <span class="mono">roles/compute.viewer</span></div></div>
+      <div class="step"><div class="k">Recurso</div><div class="v">Organização, pasta, projeto ou recurso individual</div><div class="s">herda para tudo abaixo</div></div>
+    </div>
+    <div class="cols cols-2" style="height:auto">
+      <div>
+        <h3>Identidades</h3>
+        <ul class="list tight">
+          <li><b>Usuário</b> — conta corporativa no Cloud Identity / Workspace (normalmente federada com o IdP).</li>
+          <li><b>Grupo Google</b> — o que recebe papéis; pessoas entram e saem do grupo, não das políticas.</li>
+          <li><b>Service account</b> — identidade de workloads e automações. Prefira anexar ao recurso; evite chaves JSON.</li>
+          <li><b>Workload Identity Federation</b> — pipelines externos (ex.: GitHub, outra nuvem) assumem uma identidade sem chave estática.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Herança e cuidados</h3>
+        <ul class="list tight">
+          <li>Um papel na <b>pasta</b> vale para todos os projetos dela; um papel na <b>organização</b>, para tudo. A política efetiva é a união.</li>
+          <li><b>Papéis básicos</b> (<span class="mono">owner</span>, <span class="mono">editor</span>, <span class="mono">viewer</span>) são amplos demais para produção — use predefinidos.</li>
+          <li><b>Deny policies</b> e <b>Org Policy</b> bloqueiam mesmo quem tem permissão concedida.</li>
+          <li>O <b>IAM Recommender</b> sugere reduções de permissão com base no uso real.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="src">Onde ver: Console → IAM e administrador. Auditoria: Cloud Audit Logs (Admin Activity sempre ligado; Data Access sob demanda).</span></div>
+</section>
+
+<!-- 13. GCP dia a dia -->
+<section class="slide" data-cloud="gcp" data-section="Google Cloud · Dia a dia">
+  <p class="eyebrow">Ferramentas do dia a dia</p>
+  <h2>Quatro portas de entrada para o mesmo projeto</h2>
+  <div class="body cols cols-2">
+    <div>
+      <dl class="kv">
+        <dt>Console</dt><dd><span class="mono">console.cloud.google.com</span> — o seletor de projeto no topo define onde você está. Confira o projeto antes de criar qualquer coisa.</dd>
+        <dt>gcloud</dt><dd><span class="mono">gcloud auth login</span> · <span class="mono">gcloud config set project &lt;id&gt;</span> · <span class="mono">gcloud auth application-default login</span> para SDKs e Terraform locais.</dd>
+        <dt>Terraform</dt><dd>Provider <span class="mono">hashicorp/google</span>. Em pipeline, autentique com service account impersonada ou Workload Identity Federation, nunca com chave no repositório.</dd>
+        <dt>API</dt><dd>Toda ação do console é uma chamada de API que precisa estar <b>habilitada no projeto</b>. "API not enabled" é o erro mais comum de quem chega.</dd>
+      </dl>
+    </div>
+    <div>
+      <h3>O que observar</h3>
+      <ul class="list tight">
+        <li><b>Cloud Audit Logs</b> — quem criou, alterou ou apagou, no Logs Explorer. Primeiro lugar a olhar em incidente.</li>
+        <li><b>Cloud Monitoring</b> — métricas, alertas e uptime checks; dashboards por projeto ou por escopo de métricas.</li>
+        <li><b>Personalized Service Health</b> — incidentes do Google que afetam <em>os seus</em> projetos, com alertas.</li>
+        <li><b>Status dashboard</b> — <span class="mono">status.cloud.google.com</span>: verifique antes de abrir caso.</li>
+      </ul>
+      <h3 style="margin-top:22px">Acesso privado</h3>
+      <ul class="list tight">
+        <li><b>Private Google Access / Private Service Connect</b> — APIs do Google pela rede privada da VPC.</li>
+        <li><b>Cloud Interconnect</b> — conectividade dedicada entre o datacenter e o Google Cloud.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 14. GCP suporte -->
+<section class="slide" data-cloud="gcp" data-section="Google Cloud · Suporte">
+  <p class="eyebrow">Suporte e operação</p>
+  <h2>Customer Care: ofertas, prioridades e resposta</h2>
+  <div class="body">
+    <div class="plans four" style="margin-bottom:18px">
+      <div class="plan"><div class="name">Basic</div><div class="for">incluído em toda conta</div><ul><li>Documentação, comunidade e suporte de faturamento</li><li>Sem casos técnicos</li></ul></div>
+      <div class="plan"><div class="name">Standard</div><div class="for">desenvolvimento e testes</div><ul><li>Casos técnicos ilimitados</li><li>Horário comercial; sem P1</li></ul></div>
+      <div class="plan hi"><div class="name">Enhanced</div><div class="for">ambientes produtivos</div><ul><li>P1 e P2 em 24×7</li><li>Suporte a tecnologias de terceiros</li></ul></div>
+      <div class="plan"><div class="name">Premium</div><div class="for">cargas críticas</div><ul><li>Respostas mais rápidas, TAM designado</li><li>Suporte ciente do seu ambiente</li></ul></div>
+    </div>
+    <div class="cols cols-2" style="height:auto;gap:32px">
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Prio</th><th>Definição</th><th class="c">Standard</th><th class="c">Enhanced</th><th class="c">Premium</th></tr></thead>
+          <tbody>
+            <tr><td><span class="sev sev-1">P1</span></td><td>Serviço inutilizável em produção</td><td class="c na">—</td><td class="c">1 h · 24×7</td><td class="c">15 min · 24×7</td></tr>
+            <tr><td><span class="sev sev-2">P2</span></td><td>Uso severamente prejudicado</td><td class="c">4 h</td><td class="c">4 h · 24×7</td><td class="c">2 h · 24×7</td></tr>
+            <tr><td><span class="sev sev-3">P3</span></td><td>Uso parcialmente prejudicado</td><td class="c">8 h</td><td class="c">8 h</td><td class="c">4 h</td></tr>
+            <tr><td><span class="sev sev-4">P4</span></td><td>Serviço funcional; dúvida ou melhoria</td><td class="c">8 h</td><td class="c">8 h</td><td class="c">8 h</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h3>Para abrir um caso</h3>
+        <ul class="list tight">
+          <li>Console → <b>Suporte</b> → Casos → Criar caso. Precisa do papel <span class="tag">Tech Support Editor</span> (<span class="mono">roles/cloudsupport.techSupportEditor</span>) no projeto ou na organização.</li>
+          <li>Informe <b>ID do projeto</b>, região/zona, horário (com fuso), IDs de requisição e trechos de log relevantes.</li>
+          <li>Escolha a prioridade pelo impacto real; P1 exige alguém disponível para acompanhar até resolver.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="src">Tempos são alvos de resposta inicial das Technical Support Services Guidelines do Google; sem 24×7 significa horário comercial (Pacífico). Confirme a oferta contratada na organização.</span></div>
+</section>
+
+<!-- 15. GCP checklist -->
+<section class="slide" data-cloud="gcp" data-section="Google Cloud · Onboarding">
+  <p class="eyebrow">Checklist de onboarding</p>
+  <h2>Você está pronto para operar no Google Cloud quando…</h2>
+  <div class="body">
+    <ul class="check">
+      <li><i></i><span>Tem conta corporativa no Cloud Identity e vê a organização<small>Contas pessoais @gmail não entram.</small></span></li>
+      <li><i></i><span>Está no grupo Google da sua função<small>Não peça papéis diretos para o seu usuário.</small></span></li>
+      <li><i></i><span>Sabe em qual pasta e projeto cada workload vive<small>E entende o que é herdado de cima.</small></span></li>
+      <li><i></i><span>Tem o gcloud instalado e autenticado<small><span class="mono">gcloud config list</span> mostra conta e projeto.</small></span></li>
+      <li><i></i><span>Tem o papel Tech Support Editor<small>Sem isso, não consegue abrir casos técnicos.</small></span></li>
+      <li><i></i><span>Configurou alertas do Personalized Service Health e salvou o status dashboard<small>Incidentes do Google chegam antes do usuário reclamar.</small></span></li>
+      <li><i></i><span>Sabe consultar o Cloud Audit Logs no Logs Explorer<small>Primeiro passo de qualquer investigação.</small></span></li>
+      <li><i></i><span>Registra toda demanda como tarefa no board do time<small>Mudança sem tarefa é mudança invisível.</small></span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- 16. Fluxo comum -->
+<section class="slide" data-cloud="ibm" data-section="Fechamento">
+  <p class="eyebrow">Fechamento</p>
+  <h2>Quando algo quebra: o mesmo fluxo nas duas nuvens</h2>
+  <div class="body">
+    <div class="steps">
+      <div class="stepcard">
+        <h3>Confirme se é o provedor</h3>
+        <p>Olhe a página de status antes de qualquer coisa. Incidente conhecido muda a severidade e o que você escreve no caso.</p>
+        <div class="two"><span class="i"><b>IBM Cloud</b>cloud.ibm.com/status</span><span class="g"><b>Google Cloud</b>status.cloud.google.com</span></div>
+      </div>
+      <div class="stepcard">
+        <h3>Leia a trilha de auditoria</h3>
+        <p>Quem alterou o quê, e quando. A maioria dos incidentes começa com uma mudança.</p>
+        <div class="two"><span class="i"><b>IBM Cloud</b>Activity Tracker (Cloud Logs)</span><span class="g"><b>Google Cloud</b>Cloud Audit Logs</span></div>
+      </div>
+      <div class="stepcard">
+        <h3>Abra o caso com o contexto certo</h3>
+        <p>Identificador do recurso, região, horário com fuso, IDs de requisição e o que já foi descartado. Severidade pelo impacto real.</p>
+        <div class="two"><span class="i"><b>IBM Cloud</b>Support Center · CRN</span><span class="g"><b>Google Cloud</b>Customer Care · project ID</span></div>
+      </div>
+      <div class="stepcard">
+        <h3>Registre e comunique</h3>
+        <p>Tarefa no board do time com o número do caso, quem acompanha e o próximo passo. Incidente sem dono não fecha.</p>
+        <div class="two"><span class="i"><b>IBM Cloud</b>caso + tarefa</span><span class="g"><b>Google Cloud</b>caso + tarefa</span></div>
+      </div>
+    </div>
+    <p class="lead" style="margin-top:40px;max-width:62ch">Os nomes mudam; a disciplina é a mesma. Quem domina esse fluxo nas duas nuvens consegue transitar entre os times sem perder o passo.</p>
+  </div>
+</section>
+
+<!-- 17. Referências -->
+<section class="slide" data-cloud="ibm" data-section="Referências">
+  <p class="eyebrow">Referências oficiais</p>
+  <h2>Para aprofundar</h2>
+  <div class="body">
+    <div class="refs">
+      <div class="grp" style="color:var(--ibm)">IBM Cloud na Caixa</div>
+      <a href="https://wiki.suporte.caixa/index.php/IBM_Cloud" target="_blank" rel="noopener">Wiki Caixa — IBM Cloud (acessos, sistemas, runbooks)</a>
+      <a href="https://cloud.ibm.com/authorize/caixa_tem" target="_blank" rel="noopener">Login federado da conta Caixa</a>
+      <a href="https://cloud.ibm.com/observability/monitoring" target="_blank" rel="noopener">Monitoramento centralizado (após o login)</a>
+      <div class="grp" style="color:var(--ibm)">IBM Cloud — documentação oficial</div>
+      <a href="https://cloud.ibm.com/docs/account?topic=account-account_setup" target="_blank" rel="noopener">Configuração de contas, enterprises e resource groups</a>
+      <a href="https://cloud.ibm.com/docs/account?topic=account-iamoverview" target="_blank" rel="noopener">Visão geral do IAM: usuários, access groups, políticas e papéis</a>
+      <a href="https://cloud.ibm.com/docs/get-support?topic=get-support-support-plans" target="_blank" rel="noopener">Planos de suporte Basic, Advanced e Premium</a>
+      <a href="https://cloud.ibm.com/docs/get-support?topic=get-support-support-case-severity" target="_blank" rel="noopener">Severidade de casos e tempos de resposta</a>
+      <a href="https://cloud.ibm.com/docs/cli" target="_blank" rel="noopener">IBM Cloud CLI</a>
+      <a href="https://cloud.ibm.com/status" target="_blank" rel="noopener">Status da IBM Cloud</a>
+      <div class="grp" style="color:var(--gcp)" data-cloud="gcp">Google Cloud</div>
+      <a data-cloud="gcp" href="https://cloud.google.com/resource-manager/docs/cloud-platform-resource-hierarchy" target="_blank" rel="noopener">Hierarquia de recursos: organização, pastas e projetos</a>
+      <a data-cloud="gcp" href="https://cloud.google.com/iam/docs/overview" target="_blank" rel="noopener">Visão geral do IAM: principais, papéis e herança</a>
+      <a data-cloud="gcp" href="https://docs.cloud.google.com/support/docs/overview" target="_blank" rel="noopener">Ofertas do Customer Care</a>
+      <a data-cloud="gcp" href="https://cloud.google.com/terms/tssg" target="_blank" rel="noopener">Technical Support Services Guidelines (prioridades e tempos)</a>
+      <a data-cloud="gcp" href="https://cloud.google.com/sdk/docs" target="_blank" rel="noopener">Google Cloud CLI (gcloud)</a>
+      <a data-cloud="gcp" href="https://status.cloud.google.com" target="_blank" rel="noopener">Status do Google Cloud</a>
+    </div>
+  </div>
+  <div class="foot"><span class="src">Navegação: setas ou espaço avançam · <span class="mono">F</span> tela cheia · <span class="mono">Home</span>/<span class="mono">End</span> vão ao início/fim · imprimir gera um slide por página.</span></div>
+</section>
+
+</div>
+</div>
+
+<div id="sect"></div>
+<div id="help"><kbd>←</kbd> <kbd>→</kbd> navegar · <kbd>F</kbd> tela cheia</div>
+<div id="nav">
+  <button id="prev" type="button" aria-label="Slide anterior">‹</button>
+  <span class="count"><span id="cur">1</span> / <span id="tot">1</span></span>
+  <button id="next" type="button" aria-label="Próximo slide">›</button>
+</div>
+<div id="hud"><div class="bar" id="bar"></div></div>
+
+<script>
+(function () {
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var stage = document.getElementById('stage');
+  var bar = document.getElementById('bar');
+  var cur = document.getElementById('cur');
+  var tot = document.getElementById('tot');
+  var sect = document.getElementById('sect');
+  var hud = document.getElementById('hud');
+  var nav = document.getElementById('nav');
+  var idx = 0;
+  tot.textContent = slides.length;
+
+  // Logo da Sonda: cole aqui a data URI (PNG/SVG) para substituir o wordmark em todos os slides.
+  var SONDA_LOGO = '';
+  slides.forEach(function (sl) {
+    if (!sl.querySelector('.brand')) {
+      var b = document.createElement('div');
+      b.className = 'brand corner';
+      b.innerHTML = '<img class="sonda-logo" src="" alt="Sonda" hidden><span class="wordmark">SONDA</span>';
+      sl.appendChild(b);
+    }
+  });
+  if (SONDA_LOGO) {
+    document.querySelectorAll('.brand').forEach(function (b) {
+      var img = b.querySelector('.sonda-logo');
+      img.src = SONDA_LOGO; img.hidden = false; b.classList.add('has-logo');
+    });
+  }
+
+  function fit() {
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var s = Math.min(vw / 1280, vh / 720) * 0.96;
+    stage.style.transform = 'scale(' + s + ')';
+  }
+
+  function paint(dir) {
+    slides.forEach(function (sl, i) {
+      sl.classList.toggle('active', i === idx);
+      sl.classList.toggle('leaving-back', dir < 0 && i > idx);
+    });
+    var a = slides[idx];
+    var cloud = a.getAttribute('data-cloud') || 'ibm';
+    document.documentElement.style.setProperty('--accent', 'var(--' + cloud + ')');
+    document.documentElement.style.setProperty('--accent-ink', 'var(--' + cloud + '-ink)');
+    document.documentElement.style.setProperty('--accent-soft', 'var(--' + cloud + '-soft)');
+    document.body.classList.toggle('on-divider', a.classList.contains('divider'));
+    cur.textContent = idx + 1;
+    sect.textContent = a.getAttribute('data-section') || '';
+    bar.style.width = ((idx + 1) / slides.length * 100) + '%';
+    try { history.replaceState(null, '', '#' + (idx + 1)); } catch (e) {}
+  }
+
+  function go(n, dir) {
+    var next = Math.max(0, Math.min(slides.length - 1, n));
+    if (next === idx && slides[idx].classList.contains('active')) return;
+    dir = dir || (next > idx ? 1 : -1);
+    idx = next;
+    paint(dir);
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': case ' ': case 'PageDown': case 'Enter':
+        e.preventDefault(); go(idx + 1, 1); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'PageUp': case 'Backspace':
+        e.preventDefault(); go(idx - 1, -1); break;
+      case 'Home': e.preventDefault(); go(0, -1); break;
+      case 'End': e.preventDefault(); go(slides.length - 1, 1); break;
+      case 'f': case 'F':
+        if (document.fullscreenElement) { document.exitFullscreen && document.exitFullscreen(); }
+        else if (document.documentElement.requestFullscreen) { document.documentElement.requestFullscreen(); }
+        break;
+    }
+  });
+  document.getElementById('prev').addEventListener('click', function () { go(idx - 1, -1); });
+  document.getElementById('next').addEventListener('click', function () { go(idx + 1, 1); });
+
+  var tx = null;
+  document.addEventListener('touchstart', function (e) { tx = e.touches[0].clientX; }, { passive: true });
+  document.addEventListener('touchend', function (e) {
+    if (tx === null) return;
+    var dx = e.changedTouches[0].clientX - tx; tx = null;
+    if (Math.abs(dx) > 50) go(idx + (dx < 0 ? 1 : -1), dx < 0 ? 1 : -1);
+  }, { passive: true });
+
+  window.addEventListener('resize', fit);
+  window.addEventListener('hashchange', function () {
+    var n = parseInt(location.hash.slice(1), 10);
+    if (n >= 1 && n <= slides.length) go(n - 1);
+  });
+
+  var start = parseInt(location.hash.slice(1), 10);
+  idx = (start >= 1 && start <= slides.length) ? start - 1 : 0;
+  fit();
+  paint(1);
+})();
+</script>
+</body>
+</html>
