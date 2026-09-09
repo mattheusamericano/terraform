@@ -1,0 +1,11 @@
+
+
+ 1. Solicitamos a realização de análise da documentação técnica e funcional referente ao projeto SIAPC, com o objetivo de identificar eventuais impedimentos, restrições ou dependências para sua criação. 
+
+ 2. A solicitação contempla a avaliação do estado atual da solução, considerando os componentes, módulos, integrações relacionados ao projeto. 
+
+ 3. É necessária a validação dos módulos já desenvolvidos e disponíveis para utilização, componentes ou módulos que ainda demandem desenvolvimento para viabilizar a implementação completa da solução. 
+
+ 4. Solicita-se a elaboração de documento técnico consolidado contendo, no mínimo, o diagnóstico do cenário atual, as necessidades identificadas, riscos, impedimentos, dependências e demais informações relevantes para subsidiar o planejamento e a execução do projeto. 
+
+ 5. Agradecemos pela atenção e permanecemos à disposição para quaisquer esclarecimentos adicionais. 
