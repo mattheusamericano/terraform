@@ -1,16 +1,22 @@
-
-
- 1. Solicitamos a realização de análise da documentação técnica e funcional referente ao projeto SIAPC, com o objetivo de identificar eventuais impedimentos, restrições ou dependências para sua criação. 
-
- 2. A solicitação contempla a avaliação do estado atual da solução, considerando os componentes, módulos, integrações relacionados ao projeto. 
-
- 3. É necessária a validação dos módulos já desenvolvidos e disponíveis para utilização, componentes ou módulos que ainda demandem desenvolvimento para viabilizar a implementação completa da solução. 
-
- 4. Solicita-se a elaboração de documento técnico consolidado contendo, no mínimo, o diagnóstico do cenário atual, as necessidades identificadas, riscos, impedimentos, dependências e demais informações relevantes para subsidiar o planejamento e a execução do projeto. 
-
- 5. Agradecemos pela atenção e permanecemos à disposição para quaisquer esclarecimentos adicionais. 
-
-
-oc get rs mf-siacm-server-759d5cf847 -n mfp -o yaml > novo.yaml
-oc get rs mf-siacm-server-75dc75b5c6 -n mfp -o yaml > anterior.yaml
-diff anterior.yaml novo.yaml
+Realizar o levantamento, classificação e catalogação dos tipos e categorias de recursos existentes nos ambientes de Cloud Computing utilizados pela organização, contemplando os provedores Microsoft Azure, Amazon Web Services (AWS), Google Cloud Platform (GCP), IBM Cloud e Azure Red Hat OpenShift (ARO).
+ 
+O objetivo desta iniciativa é identificar e estruturar, de forma padronizada, todos os recursos passíveis de monitoramento, estabelecendo uma visão consolidada por provedor e uma visão detalhada por categoria de serviço.
+ 
+O levantamento deverá considerar dois níveis de análise:
+ 
+1. Visão Macro (Categorias/Tipos de Recursos)
+Identificação das principais categorias de serviços e recursos disponíveis em cada Cloud Provider.
+Agrupamento dos recursos por domínio tecnológico, como Computação, Rede, Armazenamento, Banco de Dados, Containers, Segurança, Integração, Observabilidade, entre outros.
+2. Visão Micro (Recurso Unitário)
+Detalhamento individual de cada recurso pertencente às categorias identificadas.
+Definição das características relevantes para monitoramento, tais como métricas, eventos, logs, disponibilidade, desempenho, consumo e dependências.
+Embora o Azure Red Hat OpenShift (ARO) seja executado sobre infraestruturas de Cloud Providers, ele deverá ser tratado como uma categoria independente neste levantamento, devido ao seu alto nível de abstração e encapsulamento tecnológico fornecido pela Red Hat, demandando uma abordagem específica para identificação e monitoramento de seus componentes e serviços.
+Como resultado esperado, deverá ser produzida uma matriz/inventário contendo:
+Cloud Provider;
+Categoria/Tipo de recurso;
+Recurso específico;
+Descrição funcional;
+Requisitos e capacidades de monitoramento;
+Métricas, logs e eventos relevantes;
+Criticidade e observações.
+Este levantamento servirá como base para a definição da estratégia corporativa de observabilidade e monitoramento multicloud, garantindo padronização, cobertura adequada dos recursos e melhor governança operacional dos ambientes.
