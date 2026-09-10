@@ -9,3 +9,8 @@
  4. Solicita-se a elaboração de documento técnico consolidado contendo, no mínimo, o diagnóstico do cenário atual, as necessidades identificadas, riscos, impedimentos, dependências e demais informações relevantes para subsidiar o planejamento e a execução do projeto. 
 
  5. Agradecemos pela atenção e permanecemos à disposição para quaisquer esclarecimentos adicionais. 
+
+
+oc get rs mf-siacm-server-759d5cf847 -n mfp -o yaml > novo.yaml
+oc get rs mf-siacm-server-75dc75b5c6 -n mfp -o yaml > anterior.yaml
+diff anterior.yaml novo.yaml
