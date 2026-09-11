@@ -1,33 +1,21 @@
 project_id = "prj-meuproduto-mdl-prd"
 
-custom_roles = {
-  data_engineer = {
-    role_id     = "ENG_DADOS"
-    title       = "ENG_DADOS"
-    description = "Perfil de engenharia de dados"
-    permissions = [
-      "bigquery.tables.get",
-      "bigquery.tables.list",
-    ]
-  }
-}
-
 iam_bindings = {
   # aditivo (padrão) — não remove outros membros já existentes na role
-  global_bq_admin = {
+  bq_admin = {
     role    = "roles/bigquery.admin"
-    members = ["serviceAccount:sa-global@prj-meuproduto-mdl-prd.iam.gserviceaccount.com"]
+    members = ["serviceAccount:sa-meuproduto@prj-meuproduto-mdl-prd.iam.gserviceaccount.com"]
   }
 
-  data_engineer_custom_role = {
-    role    = "custom:data_engineer"
+  data_engineer_reader = {
+    role    = "roles/bigquery.dataViewer"
     members = ["group:g-data-engineers@empresa.com"]
   }
 
   # autoritativo (opt-in explícito) — substitui TODOS os membros da role a cada apply
   notebooks_runner = {
     role          = "roles/notebooks.runner"
-    members       = ["serviceAccount:sa-comp@prj-meuproduto-mdl-prd.iam.gserviceaccount.com"]
+    members       = ["serviceAccount:sa-notebooks@prj-meuproduto-mdl-prd.iam.gserviceaccount.com"]
     authoritative = true
   }
 }

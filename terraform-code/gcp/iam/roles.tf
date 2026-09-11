@@ -1,43 +1,37 @@
 resource "google_project_iam_member" "core_secret_accessor" {
-  project     = var.iam_settings["iam"].project_id
-  role        = "roles/secretmanager.secretAccessor"
-  member      = "serviceAccount:${google_service_account.sa["sa-cr-acc"].email}"
+  project = var.iam_settings["iam"].project_id
+  role    = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:${google_service_account.sa["sa-cr-acc"].email}"
 }
 
 resource "google_project_iam_member" "log_viewer_accessor" {
-  project    = var.iam_settings["iam"].project_id
-  role       = "roles/logging.viewer"
-  member     = "serviceAccount:${google_service_account.sa["sa-lg-vw"].email}"
+  project = var.iam_settings["iam"].project_id
+  role    = "roles/logging.viewer"
+  member  = "serviceAccount:${google_service_account.sa["sa-lg-vw"].email}"
 }
 
 resource "google_project_iam_member" "log_writer_accessor" {
-  project    = var.iam_settings["iam"].project_id
-  role       = "roles/logging.logWriter"
-  member     = "serviceAccount:${google_service_account.sa["sa-lg-wr"].email}"
+  project = var.iam_settings["iam"].project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.sa["sa-lg-wr"].email}"
 }
 
 resource "google_project_iam_member" "log_writer_bq_editor_member" {
-  project    = var.iam_settings["iam"].project_id
+  project = var.iam_settings["iam"].project_id
   role    = "roles/bigquery.dataEditor"
-  member     = "serviceAccount:${google_service_account.sa["sa-lg-wr"].email}"
+  member  = "serviceAccount:${google_service_account.sa["sa-lg-wr"].email}"
 }
 
 resource "google_project_iam_member" "log_admin_accessor" {
-  project    = var.iam_settings["iam"].project_id
-  role       = "roles/logging.admin"
-  member     = "serviceAccount:${google_service_account.sa["sa-lg-adm"].email}"
+  project = var.iam_settings["iam"].project_id
+  role    = "roles/logging.admin"
+  member  = "serviceAccount:${google_service_account.sa["sa-lg-adm"].email}"
 }
 
 resource "google_project_iam_member" "role_datascientist" {
   project = var.iam_settings["iam"].project_id
   role    = "roles/iam.dataScientist"
   member  = var.ml_data_scientist_org_group
-}
-
-resource "google_project_iam_member" "riscfab_datascientist" {
-  project = var.iam_settings["iam"].project_id
-  role    = "roles/iam.dataScientist"
-  member  = "group:G_GCP_RISCFAB_DTSC@corp.caixa.gov.br"
 }
 
 resource "google_project_iam_member" "ml_engineer_iap_https_resource_accessor" {
@@ -112,17 +106,11 @@ resource "google_project_iam_member" "data_engineer_dataform_editor" {
   member  = var.data_engineer_org_group
 }
 
-resource "google_project_iam_member" "ml_platform_user_riscfab" {
-  project = var.iam_settings["iam"].project_id
-  role    = "roles/aiplatform.admin"
-  member  = "group:G_GCP_RISCFAB_DTSC@corp.caixa.gov.br"
-}
-
 resource "google_project_iam_member" "role_compose_admin" {
-  project    = var.iam_settings["iam"].project_id
-  role       = "roles/composer.admin"
+  project = var.iam_settings["iam"].project_id
+  role    = "roles/composer.admin"
   member  = var.data_engineer_org_group
-  }
+}
 
 resource "google_project_iam_member" "data_engineer_dataproc_worker" {
   project = var.iam_settings["iam"].project_id

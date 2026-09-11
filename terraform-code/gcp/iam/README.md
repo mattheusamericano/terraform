@@ -6,11 +6,10 @@ Módulo Terraform que centraliza a governança de **IAM de um projeto** (voltado
 
 - **`service_account.tf`** — cria as Service Accounts internas (`google_service_account.sa`), uma para cada entrada de `sa_settings`. As demais permissões do módulo são concedidas a essas SAs pela chave usada nesse mapa (ex.: `sa-comp`, `sa-global`, `sa-cr-acc`, `sa-lg-vw`, `sa-lg-wr`, `sa-lg-adm`).
 - **`custom_roles.tf`** — define as roles customizadas de projeto (`google_project_iam_custom_role`) usadas pelos perfis de dados/ML: Dataform, ML Viewer, ML Engineer, Engenheiro de Dados e Cientista de Dados.
-- **`roles.tf`** — concede, via `google_project_iam_member`, um grande conjunto de permissões pontuais (predefinidas e customizadas) tanto às Service Accounts criadas em `service_account.tf` quanto a grupos organizacionais (`ml_engineer_org_group`, `ml_data_scientist_org_group`, `data_engineer_org_group` e alguns grupos fixos do domínio RISCFAB).
+- **`roles.tf`** — concede, via `google_project_iam_member`, um grande conjunto de permissões pontuais (predefinidas e customizadas) tanto às Service Accounts criadas em `service_account.tf` quanto a grupos organizacionais (`ml_engineer_org_group`, `ml_data_scientist_org_group`, `data_engineer_org_group`).
 - **`iam_binging.tf`** *(nome do arquivo contém esse typo no repositório)* — concede, via `google_project_iam_binding` (binding autoritativo, substitui a lista de membros da role), as roles customizadas de ML Engineer, Data Scientist e Engenheiro de Dados (definidas em `custom_roles.tf`) aos respectivos grupos organizacionais, além de `roles/notebooks.runner` para Data Scientist e Engenheiro de Dados.
 - **`composer.tf`** — concede à Service Account `sa-comp` o conjunto de roles definido em `permissions_sa_composer` (pensado para a Service Account usada pelo Cloud Composer).
 - **`globals.tf`** — concede à Service Account `sa-global` o conjunto de roles definido em `permissions_sa_global` (permissões "globais" comuns ao projeto).
-- **`main.tf`** — atualmente não possui nenhum recurso ativo; contém apenas blocos comentados (concessão de `roles/storage.admin` a grupos RISCFAB) pendentes de decisão, conforme o próprio comentário no código (`CONSULTAR SE VAMOS DAR ESSE ACESSO`).
 - **`variables.tf`** — declara todas as variáveis de entrada do módulo.
 - **`output.tf`** — expõe os e-mails das Service Accounts criadas.
 
@@ -30,8 +29,8 @@ Módulo Terraform que centraliza a governança de **IAM de um projeto** (voltado
 - `google_project_iam_member.permissions_sa_global` *(globals.tf)* — concede cada role de `permissions_sa_global` à SA `sa-global`.
 - `google_project_iam_member.*` *(roles.tf)* — cerca de 25 concessões pontuais de roles predefinidas e customizadas, entre elas:
   - `core_secret_accessor` (SA `sa-cr-acc` → `secretmanager.secretAccessor`), `log_viewer_accessor`/`log_writer_accessor`/`log_admin_accessor` (SAs `sa-lg-vw`/`sa-lg-wr`/`sa-lg-adm` → `logging.viewer`/`logging.logWriter`/`logging.admin`), `log_writer_bq_editor_member` (SA `sa-lg-wr` → `bigquery.dataEditor`);
-  - permissões para `ml_engineer_org_group` (IAP, Cloud Run developer, AI Platform viewer, IAM role viewer, Cloud Build connection admin, Storage admin via grupo RISCFAB fixo `G_GCP_RISCFAB_DTSC`, AI Platform admin);
-  - permissões para `ml_data_scientist_org_group` (AI Platform user, IAM role viewer, Dataform editor, Storage admin, IAM Data Scientist);
+  - permissões para `ml_engineer_org_group` (IAP, Cloud Run developer, AI Platform viewer, IAM role viewer, Cloud Build connection admin);
+  - permissões para `ml_data_scientist_org_group` (IAM Data Scientist via `role_datascientist`, AI Platform user, IAM role viewer, Dataform editor, Storage admin);
   - permissões para `data_engineer_org_group` (AI Platform viewer, IAM role viewer, BigQuery data editor, Dataform editor, Composer admin, Dataproc worker, Storage admin, Notebooks runner, Logging viewer, IAM ML Engineer).
 
 ### Data sources
@@ -107,7 +106,6 @@ module "iam" {
 
 - `var.iam_settings` é um mapa, mas todo o módulo acessa apenas a chave literal `"iam"` (`var.iam_settings["iam"].project_id`) — a variável deve obrigatoriamente conter essa chave, o projeto de todos os recursos do módulo é sempre esse único projeto.
 - Os arquivos `roles.tf`, `composer.tf` e `globals.tf` referenciam Service Accounts por chave fixa (`sa["sa-comp"]`, `sa["sa-global"]`, `sa["sa-cr-acc"]`, `sa["sa-lg-vw"]`, `sa["sa-lg-wr"]`, `sa["sa-lg-adm"]`) — essas chaves **precisam existir** em `sa_settings`, caso contrário o `terraform plan/apply` falha com erro de índice inválido no mapa.
-- `main.tf` não cria nenhum recurso ativo hoje — contém apenas trechos comentados aguardando decisão sobre conceder `roles/storage.admin` a grupos RISCFAB.
-- Há um grupo do Google **hardcoded** no código (`G_GCP_RISCFAB_DTSC@corp.caixa.gov.br`) em dois recursos de `roles.tf` (`riscfab_datascientist` e `ml_platform_user_riscfab`) — não é parametrizado por variável, portanto é fixo para qualquer instância do módulo.
+- Não há mais nenhum grupo do Google hardcoded no código — os dois recursos de `roles.tf` que concediam acesso fixo a `G_GCP_RISCFAB_DTSC@corp.caixa.gov.br` (`riscfab_datascientist`, `ml_platform_user_riscfab`) foram removidos, assim como `main.tf`, que só continha blocos comentados do mesmo tipo. Todo acesso concedido por este módulo agora vem exclusivamente de `sa_settings`/`ml_engineer_org_group`/`ml_data_scientist_org_group`/`data_engineer_org_group`, sem exceção fixa no código.
 - `google_project_iam_binding` (usado em `iam_binging.tf`) é **autoritativo**: substitui integralmente a lista de membros da role a cada apply. Diferente de `google_project_iam_member` (usado nos demais arquivos), que apenas adiciona um membro sem remover outros já existentes na role. Misturar os dois tipos de recurso na mesma role pode gerar conflitos de estado — atualmente o módulo usa `iam_binding` apenas para as roles customizadas e `notebooks.runner`, e `iam_member` para todo o restante.
 - As roles customizadas definidas em `custom_roles.tf` recebem suas permissões inteiramente das listas passadas em `permissions_bigquery_dataform`, `permissions_ml_viewer`, `permissions_ml_engineer`, `permissions_data_engineer` e `permissions_ml_data_scientis` — qualquer alteração de escopo de acesso desses perfis deve ser feita ajustando essas listas, não o `.tf`.

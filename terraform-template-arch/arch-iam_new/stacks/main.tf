@@ -1,64 +1,40 @@
 #
-# SERVICE ACCOUNTS
-# Este stack não cria SA diretamente — delega para o módulo genérico já usado
-# pelos demais módulos de recurso do repositório.
-#
-module "service_account" {
-  source = "../../tf-modules-for-gcp/service_account"
-
-  sa_settings = var.sa_settings
-}
-
-#
 # IAM
+# Este stack não cria nenhuma Service Account — só concede roles a
+# identidades que já existem (grupos organizacionais, e quaisquer SAs
+# externas via var.extra_group_role_bindings). Quem precisar de uma SA usa o
+# módulo service_account (../../../terraform-code/gcp/service_account)
+# separadamente.
+#
+# As roles de cada perfil (ML Engineer/Data Scientist/Data Engineer, só
+# roles predefinidas do GCP — não há mais custom role para nenhum perfil) e a
+# distinção nprod x prod vivem dentro do módulo iam (ml_ops_profiles.tf), não
+# aqui — este stack só repassa QUEM (grupos, via var.ml_ops_settings) e QUAL
+# o estágio do ambiente (environment_type, idem). Isso é deliberado: quem
+# edita este stack não deve poder mudar quais roles um perfil recebe, só
+# quem tem acesso — mudar o conjunto de roles é uma decisão de segurança que
+# exige editar o módulo.
+#
+# for_each sobre var.ml_ops_settings: normalmente uma única entrada (um
+# projeto por ambiente), mas o mapa permite mais de um projeto no mesmo stack
+# se algum ambiente precisar.
 #
 module "iam" {
-  source     = "../../tf-modules-for-gcp/iam_new"
-  project_id = var.project_id
+  source   = "../../../terraform-code/gcp/iam_new"
+  for_each = var.ml_ops_settings
 
-  custom_roles = {
-    # Criadas mas não vinculadas a nenhum membro dentro deste stack — igual ao
-    # comportamento do módulo antigo. Provavelmente consumidas por outro
-    # stack/processo fora daqui; mantido por compatibilidade.
-    dataform_service_account_role = {
-      role_id     = "dataformServiceAccountBasicRole"
-      title       = "Dataform Service Account basic role"
-      description = "[Terraform] - Basic permissions for Dataform User Service Account"
-      permissions = local.permissions_bigquery_dataform
-    }
-    machine_learning_viewer = {
-      role_id     = "ENG_VIEWER"
-      title       = "ENG_VIEWER"
-      description = "[Terraform] - Permissions to allow view resources related to Machine Learning practices within GCP"
-      permissions = local.permissions_ml_viewer
-    }
+  project_id = each.value.project_id
 
-    machine_learning_engineer = {
-      role_id     = "ENG_MLOPS"
-      title       = "ENG_MLOPS"
-      description = "[Terraform] - Basic permissions to allow Machine Learning Engineer role to use resources related to Machine Learning practices within GCP"
-      permissions = local.permissions_ml_engineer
-    }
-    data_engineer = {
-      role_id     = "ENG_DADOS"
-      title       = "ENG_DADOS"
-      description = "[Terraform] - Basic permissions to allow Data Engineer role to use resources related to Machine Learning practices within GCP"
-      permissions = local.permissions_data_engineer
-    }
-    machine_learning_data_scientist = {
-      role_id     = "CIENTISTA_DADOS"
-      title       = "CIENTISTA_DADOS"
-      description = "[Terraform] - Basic permissions to allow Machine Learning Data Scientist role to use resources related to Machine Learning practices within GCP"
-      permissions = local.permissions_ml_data_scientist
-    }
+  ml_ops_profiles = {
+    enabled                     = true
+    environment_type            = each.value.environment_type
+    ml_engineer_org_group       = each.value.ml_engineer_org_group
+    ml_data_scientist_org_group = each.value.ml_data_scientist_org_group
+    data_engineer_org_group     = each.value.data_engineer_org_group
   }
 
-  # Une os grants das Service Accounts internas, os grants dos grupos de ML/Dados
-  # e quaisquer grants extras definidos explicitamente por ambiente (ex.: o grupo
-  # que antes vinha hardcoded no módulo antigo — ver variable "extra_group_role_bindings").
-  iam_bindings = merge(
-    local.sa_role_iam_bindings,
-    local.group_role_bindings,
-    var.extra_group_role_bindings,
-  )
+  # Grants extras definidos explicitamente por ambiente (ex.: o grupo que
+  # antes vinha hardcoded no módulo antigo — ver variable
+  # "extra_group_role_bindings"). Aplicado igualmente a toda entrada.
+  iam_bindings = var.extra_group_role_bindings
 }

@@ -1,9 +1,9 @@
 resource "google_project_iam_custom_role" "dataform_service_account_role" {
-  project       = var.iam_settings["iam"].project_id
-  role_id       = "dataformServiceAccountBasicRole"
-  title         = "Dataform Service Account basic role"
-  description   = "[Terraform] - Basic permissions for Dataform User Service Account"
-  permissions   = var.permissions_bigquery_dataform
+  project     = var.iam_settings["iam"].project_id
+  role_id     = "dataformServiceAccountBasicRole"
+  title       = "Dataform Service Account basic role"
+  description = "[Terraform] - Basic permissions for Dataform User Service Account"
+  permissions = var.permissions_bigquery_dataform
 }
 
 resource "google_project_iam_custom_role" "machine_learning_viewer" {

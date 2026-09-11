@@ -1,68 +1,20 @@
 #
-# PROJETO
+# PROJETO(S) e PERFIS ML OPS
 #
-project_id = "__project_id__"
+# A chave do mapa é livre — aqui usamos a sigla do projeto/ambiente. Um único
+# projeto é o caso normal; só tem mais de uma entrada se este stack precisar
+# aplicar em mais de um projeto de uma vez.
+#
+ml_ops_settings = {
+  "__sigla__" = {
+    project_id       = "__project_id__"
+    environment_type = "__environment_type__" # "nprod" ou "prod" — ver módulo iam (ml_ops_profiles.tf)
 
-#
-# SERVICE_ACCOUNT
-# Repassado como está para o módulo service_account (../../tf-modules-for-gcp/service_account),
-# que é quem efetivamente cria as SAs.
-#
-sa_settings = {
-
-  #1 Global
-  "sa-global" = {
-    project_id   = "__project_id__"
-    display_name = "SA Global by Terraform"
-  }
-  #2 Integration
-  "sa-itg" = {
-    project_id   = "__project_id__"
-    display_name = "SA Integração by Terraform"
-  }
-  #3 CloudRun
-  "sa-clrun" = {
-    project_id   = "__project_id__"
-    display_name = "SA Cloudrun by Terraform"
-  }
-  #4 Composer
-  "sa-comp" = {
-    project_id   = "__project_id__"
-    display_name = "SA Composer by Terraform"
-  }
-  #5 Dataform Runner
-  "sa-dt-run" = {
-    project_id   = "__project_id__"
-    display_name = "SA Dataform Runner by Terraform"
-  }
-  #6 Core Secret Accessor
-  "sa-cr-acc" = {
-    project_id   = "__project_id__"
-    display_name = "SA Core Secret Acessor by Terraform"
-  }
-  #7 Log Viewer Service
-  "sa-lg-vw" = {
-    project_id   = "__project_id__"
-    display_name = "SA Log Viewer Service by Terraform"
-  }
-  #8 Log Writer Service
-  "sa-lg-wr" = {
-    project_id   = "__project_id__"
-    display_name = "SA Log Writer Service by Terraform"
-  }
-  #9 Log Admin Service
-  "sa-lg-adm" = {
-    project_id   = "__project_id__"
-    display_name = "SA Log Admin Service by Terraform"
+    ml_engineer_org_group       = "group:__group_ml_engineer__"
+    ml_data_scientist_org_group = "group:__group_data_scientist__"
+    data_engineer_org_group     = "group:__group_data_engineer__"
   }
 }
-
-#
-# Grupos para Custom Roles
-#
-ml_engineer_org_group       = "group:__group_ml_engineer__"
-ml_data_scientist_org_group = "group:__group_data_scientist__"
-data_engineer_org_group     = "group:__group_data_engineer__"
 
 #
 # Bindings extras de grupo/role específicos deste ambiente. Antes, um grupo
