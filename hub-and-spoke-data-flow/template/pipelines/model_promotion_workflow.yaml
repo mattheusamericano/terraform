@@ -1,27 +1,48 @@
 
+# ==============================================================================
+# 🚀 BLUEPRINT: DATAFORM + ANALYTICS HUB + SCHEDULE MANAGEMENT
+# ==============================================================================
+
 main:
   params: [input]
   steps:
     - init_variables:
         assign:
+          # --- Variável de Controle de Ação ---
+          # Opções suportadas: "RUN", "DELETE_LISTING", "DELETE_SCHEDULE", "PAUSE_SCHEDULE", "RESUME_SCHEDULE"
+          - action: ${default(map.get(input, "action"), "RUN")}
+          
+          # --- Parâmetros de Projeto e Regiões ---
           - project_id: ${map.get(input, "project_id")}
           - project_id_hub: ${map.get(input, "project_id_hub")}
-          - dataset_id: ${map.get(input, "dataset_id")}
           - location: ${default(map.get(input, "location"), "__region__")}
+          - ah_location: ${default(map.get(input, "ah_location"), "__region__")}
+
+          # --- Parâmetros do Dataform ---
           - repository_id: ${map.get(input, "repository_id")}
+          - dataform_service_account: ${map.get(input, "dataform_service_account")}
+          - git_commitish: ${map.get(input, "git_commitish")}       
+
+           # --- Parâmetros de Agendamento (Schedule) ---
+          - cron_release_config: ${default(map.get(input, "cron_release_config"), "*/5 * * * *")}
+          - cron_workflow_config: ${default(map.get(input, "cron_workflow_config"), "*/5 * * * *")}
+          - time_zone: "America/Sao_Paulo"
+          - included_tags: "prod"
+
+          # --- Variáveis do Analytics Hub (só obrigatórias se publish_to_hub=true) ---
           - publish_to_hub: ${default(map.get(input, "publish_to_hub"), false)}
+          - dataset_id: ${map.get(input, "dataset_id")}
+          - data_exchange_id: ${map.get(input, "data_exchange_id")}
+          - listing_id: ${map.get(input, "listing_id")}
+          - listing_display_name: ${default(map.get(input, "listing_display_name"), "Listing para o dataset " + dataset_id)}
+          - listing_description: ${default(map.get(input, "listing_description"), "Listing gerado e atualizado via Cloud Workflows")}
+          
           # Reservadas para uso futuro (disparo do pipeline Vertex AI a partir
           # daqui) — nenhum step abaixo consome estas três hoje, ver nota no
           # topo do arquivo.
           - pipeline_root: ${map.get(input, "pipeline_root")}
           - template_uri: ${map.get(input, "template_uri")}
           - service_account: ${map.get(input, "service_account")}
-          - dataform_service_account: ${map.get(input, "dataform_service_account")}
-          - git_commitish: ${map.get(input, "git_commitish")}
-          # --- Variáveis do Analytics Hub (só obrigatórias se publish_to_hub=true) ---
-          - ah_location: ${default(map.get(input, "ah_location"), "__region__")}
-          - data_exchange_id: ${map.get(input, "data_exchange_id")}
-          - listing_id: ${map.get(input, "listing_id")}
 
     - check_missing_inputs:
         assign:
@@ -51,21 +72,36 @@ main:
             raise: '${"Input(s) obrigatório(s) ausente(s): " + missing_str + "- confira se o placeholder/substitution correspondente está preenchido no vars.env (ou nos substitutions: de dev.yaml/prod.yaml). Veja também o log do step trigger-cloud-workflow-async no Cloud Build, que imprime o JSON completo enviado (Inputs: ...) antes de disparar o workflow."}'
 
     # ==========================================================================
+    # 🔀 ROTEADOR DE AÇÕES (CONTROL PLANE)
+    # ==========================================================================
+    - route_action:
+        switch:
+          - condition: ${action == "DELETE_LISTING"}
+            next: delete_listing
+          - condition: ${action == "DELETE_SCHEDULE"}
+            next: delete_workflow_schedule
+          - condition: ${action == "PAUSE_SCHEDULE"}
+            next: pause_schedule
+          - condition: ${action == "RESUME_SCHEDULE"}
+            next: resume_schedule
+          - condition: ${action == "RUN"}
+            next: set_dataform_env
+  # Se digitar errado ou mandar uma ação que não existe, aborta a esteira!
+        next: invalid_action_error
+
+    - invalid_action_error:
+        raise: ${"ERRO - Ação inválida ou não suportada -> [" + action + "]. Verifique o payload enviado."}        
+
+
+    # ==========================================================================
     # 💾 ETAPA 1: ORQUESTRAÇÃO DE DADOS (DATAFORM)
     # ==========================================================================
-    - set_dataform_env_default:
-        # Garante que dataform_env sempre tem um valor, mesmo se git_commitish
-        # vier diferente de "modelagem"/"main" (ex.: execução manual com outra
-        # branch/tag/commit) — sem isso, compile_dataform quebraria com erro
-        # de variável indefinida em vez de só usar o próprio git_commitish.
-        assign:
-          - dataform_env: ${git_commitish}
-
-    - set_dataform_env:
+    - set_dataform_env: 
         switch:
           - condition: '${git_commitish == "modelagem"}'
             assign:
               - dataform_env: "modelagem"
+
           - condition: '${git_commitish == "main"}'
             assign:
               - dataform_env: "inferencia"
@@ -100,6 +136,8 @@ main:
               compilationResult: ${compilation_name}
               invocationConfig:
                 serviceAccount: ${dataform_service_account}
+                # includedTags: 
+                #   - ${included_tags}
           result: invocation_res
         retry: ${http.default_retry}
 
@@ -119,10 +157,10 @@ main:
 
     - check_dataform_state:
         switch:
-          - condition: ${status_res.body.state == "SUCCEEDED" and publish_to_hub}
+          - condition: ${status_res.body.state == "SUCCEEDED" and publish_to_hub and git_commitish == "main"}
             next: publish_to_analytics_hub
           - condition: ${status_res.body.state == "SUCCEEDED" and not publish_to_hub}
-            next: success_dataform_only
+            next: setup_release_config
           - condition: ${status_res.body.state == "FAILED" or status_res.body.state == "CANCELLED"}
             next: dataform_failed
         next: wait_and_poll_dataform
@@ -136,8 +174,10 @@ main:
     - dataform_failed:
         raise: ${"Dataform invocation failed with state " + status_res.body.state}
 
+
+
     # ==========================================================================
-    # 📊 ETAPA 2: PUBLICAR NO ANALYTICS HUB (FINAL DA PIPELINE)
+    # 📊 ETAPA 2: PUBLICAR NO ANALYTICS HUB
     # ==========================================================================
     - publish_to_analytics_hub:
         try:
@@ -148,8 +188,8 @@ main:
             auth:
               type: OAuth2
             body:
-              displayName: ${"Listing para o dataset " + dataset_id}
-              description: "Listing gerado e atualizado via Cloud Workflows"
+              displayName: ${listing_display_name}
+              description: ${listing_description}
               bigqueryDataset:
                 dataset: ${"projects/" + project_id + "/datasets/" + dataset_id}
           result: ah_listing_res
@@ -159,20 +199,195 @@ main:
             - check_if_listing_exists:
                 switch:
                   - condition: ${e.code == 409}
-                    next: listing_already_exists
+                    next: update_existing_listing
                 next: raise_ah_error
             - raise_ah_error:
                 raise: ${"Erro ao publicar no Analytics Hub - " + json.encode_to_string(e)}
-        next: success_new_listing
+        next: setup_release_config
+
+    - update_existing_listing:
+        try:
+          call: http.patch
+          args:
+            url: ${"https://analyticshub.googleapis.com/v1/projects/" + project_id_hub + "/locations/" + ah_location + "/dataExchanges/" + data_exchange_id + "/listings/" + listing_id + "?updateMask=displayName,description"}
+            auth:
+              type: OAuth2
+            body:
+              displayName: ${listing_display_name}
+              description: ${listing_description}
+          result: ah_update_res
+        retry: ${http.default_retry}
+        next: setup_release_config
 
     # ==========================================================================
-    # ✅ RETORNOS FINAIS DA PIPELINE
+    # ⏱️ ETAPA 3: CONFIGURAR AGENDAMENTO (DATAFORM SCHEDULE)
     # ==========================================================================
-    - success_dataform_only:
-        return: "Sucesso: Dataform executado. Publicação no Analytics Hub foi pulada (publish_to_hub=false)."
+    - setup_release_config:
+        try:
+          call: http.post
+          args:
+            url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/releaseConfigs?releaseConfigId=release-diaria"}
+            auth:
+              type: OAuth2
+            body:
+              gitCommitish: ${git_commitish}
+              cronSchedule: ${cron_release_config}
+              timeZone: ${time_zone}
+        except:
+          as: e
+          steps:
+            - check_release_conflict:
+                switch:
+                  - condition: ${e.code == 409}
+                    next: patch_release_config
+                next: raise_release_setup_error
+            - raise_release_setup_error:
+                raise: ${"Erro na configuração da Release do Dataform - " + json.encode_to_string(e)}
+        next: setup_workflow_config
 
-    - listing_already_exists:
-        return: "Aviso: A execução do Dataform foi concluída, mas a etapa do Analytics Hub identificou que o listing já existe (Erro 409). Pipeline finalizada."
+    - patch_release_config:
+        call: http.patch
+        args:
+          url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/releaseConfigs/release-diaria?updateMask=gitCommitish,cronSchedule,timeZone"}
+          auth:
+            type: OAuth2
+          body:
+            gitCommitish: ${git_commitish}
+            cronSchedule: ${cron_release_config}
+            timeZone: ${time_zone}
+        next: setup_workflow_config
 
-    - success_new_listing:
-        return: "Sucesso: Dataform executado e novo listing criado no Analytics Hub!"
+    - setup_workflow_config:
+        try:
+          call: http.post
+          args:
+            url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/workflowConfigs?workflowConfigId=agendamento-diario"}
+            auth:
+              type: OAuth2
+            body:
+              releaseConfig: ${"projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/releaseConfigs/release-diaria"}
+              cronSchedule: ${cron_workflow_config}
+              timeZone: ${time_zone}
+              invocationConfig:
+                serviceAccount: ${dataform_service_account}
+                # includedTags: 
+                #   - ${included_tags}
+        except:
+          as: e
+          steps:
+            - check_workflow_conflict:
+                switch:
+                  - condition: ${e.code == 409}
+                    next: patch_workflow_config
+                next: raise_schedule_setup_error
+            - raise_schedule_setup_error:
+                raise: ${"Erro na configuração de agendamento do Dataform - " + json.encode_to_string(e)}
+        next: success_run
+
+    - patch_workflow_config:
+        call: http.patch
+        args:
+          url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/workflowConfigs/agendamento-diario?updateMask=releaseConfig,cronSchedule,timeZone,invocationConfig.serviceAccount,invocationConfig.includedTags"}
+          auth:
+            type: OAuth2
+          body:
+            releaseConfig: ${"projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/releaseConfigs/release-diaria"}
+            cronSchedule: ${cron_workflow_config}
+            timeZone: ${time_zone}
+            invocationConfig:
+              serviceAccount: ${dataform_service_account}
+              # includedTags: 
+              #   - ${included_tags}
+        next: success_run
+
+    - success_run:
+        return: ${if(publish_to_hub, "✅ SUCESSO - Dados processados, expostos no Analytics Hub e agendamentos validados!", "✅ SUCESSO - Dados processados e agendamentos validados (Analytics Hub ignorado).")}
+
+    # ==========================================================================
+    # 🛠️ ROTAS DE GESTÃO E INFRAESTRUTURA (ACTIONS EXTRAS)
+    # ==========================================================================
+    
+    # --- Deleta vitrine no Analytics Hub ---
+    - delete_listing:
+        try:
+          call: http.delete
+          args:
+            url: ${"https://analyticshub.googleapis.com/v1/projects/" + project_id_hub + "/locations/" + ah_location + "/dataExchanges/" + data_exchange_id + "/listings/" + listing_id}
+            auth:
+              type: OAuth2
+        except:
+          as: e
+          steps:
+            - ignore_404_listing:
+                switch:
+                  - condition: ${e.code == 404}
+                    next: success_action
+                next: raise_listing_error
+            - raise_listing_error:
+                raise: ${"Erro ao deletar listing - " + json.encode_to_string(e)}
+        next: success_action
+
+    # --- Deleta agendamento no Dataform (Workflow Config -> Release Config) ---
+    - delete_workflow_schedule:
+        try:
+          call: http.delete
+          args:
+            url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/workflowConfigs/agendamento-diario"}
+            auth:
+              type: OAuth2
+        except:
+          as: e
+          steps:
+            - ignore_404_workflow:
+                switch:
+                  - condition: ${e.code == 404}
+                    next: delete_release_schedule
+                next: raise_workflow_error
+            - raise_workflow_error:
+                raise: ${"Erro ao deletar Workflow Config - " + json.encode_to_string(e)}
+        next: delete_release_schedule
+
+    - delete_release_schedule:
+        try:
+          call: http.delete
+          args:
+            url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/releaseConfigs/release-diaria"}
+            auth:
+              type: OAuth2
+        except:
+          as: e
+          steps:
+            - ignore_404_release:
+                switch:
+                  - condition: ${e.code == 404}
+                    next: success_action
+                next: raise_release_error
+            - raise_release_error:
+                raise: ${"Erro ao deletar Release Config - " + json.encode_to_string(e)}
+        next: success_action
+
+    # --- Pausa e Retoma Agendamentos ---
+    - pause_schedule:
+        call: http.patch
+        args:
+          url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/workflowConfigs/agendamento-diario?updateMask=cronSchedule"}
+          auth:
+            type: OAuth2
+          body:
+            cronSchedule: "" # String vazia para suspender a execução
+        next: success_action
+
+    - resume_schedule:
+        call: http.patch
+        args:
+          url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/workflowConfigs/agendamento-diario?updateMask=cronSchedule"}
+          auth:
+            type: OAuth2
+          body:
+            cronSchedule: ${cron_workflow_config} # Retoma com o cron parametrizado
+        next: success_action
+
+    # --- Retorno dinâmico com a Ação Executada ---
+    - success_action:
+        return: ${"✅ SUCESSO - Ação de gestão de infraestrutura [" + action + "] concluída com sucesso."}
+ 

@@ -1,60 +1,20 @@
-# ==============================================================================
-# GitHub Actions: gatilho de CI/CD via Cloud Build
-# ==============================================================================
-# Este arquivo NÃO tem placeholder nenhum — nunca precisa ser editado além do
-# que já vem configurado. A configuração de projetos/região/worker pools vem
-# de `vars.env`, lido do zero em cada execução pelo job `load-config` e
-# repassado aos outros jobs via `needs.load-config.outputs`. As branches que
-# disparam cada job (modelagem/main) são hardcoded direto no `if:` de cada
-# job, não vêm de vars.env — assim o roteamento não depende de conseguir ler
-# o arquivo de variáveis.
-#
-# `apply-vars.sh` também roda dentro dos jobs de treino, mas só para resolver
-# os placeholders de arquivos que o Cloud Build lê como texto puro
-# (model-config.yaml, os defaults de .cloudbuild/*.yaml) — isso acontece só
-# no workspace efêmero do runner, nunca é commitado/dado push. `gcloud builds
-# submit` envia o diretório `dataform-workflow/` já resolvido pro Cloud Build.
-#
-# Não há nenhum commit automático neste workflow — vars.env é um arquivo
-# normal, versionado como qualquer outro; editar um valor é só um commit seu,
-# sem exigir nenhuma permissão especial de push em .github/workflows/.
-#
-# Requer os secrets do repositório:
-#   - workload_identity_provider_gcp e service_account_gcp (autenticação via
-#     Workload Identity Federation)
-#
-# dataform-workflow/ (hardcoded em todos os caminhos abaixo): premissa deste
-# template — ele vive dentro dessa subpasta do repositório, não na raiz. A
-# raiz do repositório é do projeto Dataform (workflow_settings.yaml/
-# definitions/ são OBRIGADOS a ficar lá, exigência do próprio Dataform),
-# então o template inteiro (.cloudbuild/, pipelines/, apply-vars.sh,
-# vars.env, model-config.yaml) cede a raiz e fica em 'dataform-workflow/'.
-# Este arquivo (deploy.yml) é a ÚNICA exceção à regra "nunca precisa editar"
-# — o resto continua vindo de vars.env. Importante:
-# .github/workflows/deploy.yml em si TEM que continuar na raiz do
-# repositório — o GitHub só reconhece workflows ali, nunca dentro de uma
-# subpasta; não dá pra mover este arquivo junto com o resto.
-# ==============================================================================
 name: MLOps Model Training Deployment
 
 on:
-  # Dispara em QUALQUER push (branch ou tag) — o filtro de verdade é o `if:`
-  # de cada job, com os nomes de branch hardcoded ('modelagem'/'main') em vez
-  # de lidos de vars.env — evita depender da leitura do arquivo de variáveis
-  # só pra decidir se o workflow roda ou não.
-  push: {}
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - modelagem
+      - main
+
+env:
+  TEMPLATE_DIR: 'dataform-workflow'
 
 jobs:
-  # --------------------------------------------------------------------------
-  # Lê vars.env uma vez e repassa os valores pros outros jobs via outputs.
-  # Precisa ser um job próprio (em vez de um step dentro de cada job) porque
-  # o `if:` de cada job é avaliado ANTES de qualquer step daquele job rodar —
-  # só um job anterior, com seu próprio checkout, consegue produzir um valor
-  # que os outros jobs usam no `if:`/`env` deles.
-  # --------------------------------------------------------------------------
   load-config:
     name: Carrega configuração de vars.env
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-set-default-gcp-caixamlops-nprod
     outputs:
       project_id_mdl: ${{ steps.vars.outputs.project_id_mdl }}
       project_id_inf: ${{ steps.vars.outputs.project_id_inf }}
@@ -69,13 +29,6 @@ jobs:
       - name: Lê vars.env
         id: vars
         run: |
-          # Extrai cada chave direto do arquivo (grep/cut), em vez de usar
-          # `source` (que executa o arquivo inteiro como código bash — uma
-          # única linha mal formada em qualquer lugar do arquivo derruba o
-          # job inteiro com um erro difícil de entender). Tolera \r de fim de
-          # linha (CRLF/Windows) e espaços em branco no começo/fim do valor
-          # (ex.: "CHAVE= valor" com espaço depois do "=" — sem isso, esse
-          # espaço vaza pro comando gcloud e vira um argumento vazio).
           VARS_FILE="dataform-workflow/vars.env"
 
           get_var() {
@@ -91,10 +44,6 @@ jobs:
           CLOUDBUILD_SA_NPRD_VAL="$(get_var CLOUDBUILD_SERVICE_ACCOUNT_NPRD)"
           CLOUDBUILD_SA_PRD_VAL="$(get_var CLOUDBUILD_SERVICE_ACCOUNT_PRD)"
 
-          # Debug: imprime o que foi extraído no log do job (não é secret,
-          # são só nomes de projeto/branch/worker pool) — se algo aqui sair
-          # vazio ou diferente do esperado, é por isso que os jobs de treino
-          # ficam "skipped" (o `if:` deles depende desses valores).
           echo "=== Valores extraídos de $VARS_FILE ==="
           echo "TRAIN_PROJECT_ID   -> '$PROJECT_ID_MDL'"
           echo "SERVING_PROJECT_ID -> '$PROJECT_ID_INF'"
@@ -118,7 +67,7 @@ jobs:
     name: Train and Evaluate Model (MDL)
     needs: load-config
     if: github.ref == 'refs/heads/modelagem'
-    runs-on: arc-runner-set-default-gcp-caixagithub-prod
+    runs-on: arc-runner-set-default-gcp-caixamlops-nprod
     permissions:
       contents: read
       id-token: write   # necessário para Workload Identity Federation
@@ -137,8 +86,8 @@ jobs:
         with:
           project_id: ${{ needs.load-config.outputs.project_id_mdl }}
           token_format: "access_token"
-          workload_identity_provider: ${{ secrets.workload_identity_provider_gcp }}
-          service_account: ${{ secrets.service_account_gcp }}
+          workload_identity_provider: ${{ secrets.workload_identity_provider_gcp_nprod }}
+          service_account: ${{ secrets.service_account_gcp_nprod }}
 
       - name: Setup gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
@@ -156,10 +105,8 @@ jobs:
   train-and-evaluate-inf:
     name: Train and Evaluate Model (INF)
     needs: load-config
-    # Dispara em duas situações: tag v* (fluxo original) OU push na branch main
-    # — o que vier primeiro.
     if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
-    runs-on: arc-runner-set-default-gcp-caixagithub-prod
+    runs-on: arc-runner-set-default-gcp-caixamlops-prod
     permissions:
       contents: read
       id-token: write
@@ -178,8 +125,8 @@ jobs:
         with:
           project_id: ${{ needs.load-config.outputs.project_id_inf }}
           token_format: "access_token"
-          workload_identity_provider: ${{ secrets.workload_identity_provider_gcp }}
-          service_account: ${{ secrets.service_account_gcp }}
+          workload_identity_provider: ${{ secrets.workload_identity_provider_gcp_prod }}
+          service_account: ${{ secrets.service_account_gcp_prod }}
 
       - name: Setup gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
