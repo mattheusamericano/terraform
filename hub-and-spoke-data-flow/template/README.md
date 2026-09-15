@@ -91,7 +91,22 @@ Não precisa de nenhum secret além dos já existentes (`workload_identity_provi
 | — *(sem placeholder — só runtime)* | `CLOUDBUILD_SERVICE_ACCOUNT_NPRD` | Lido em runtime por `deploy.yml` — passado como `--service-account` no `gcloud builds submit` do job MDL | `projects/prj-.../serviceAccounts/sa-cloudbuild-mdl@....iam.gserviceaccount.com` |
 | — *(sem placeholder — só runtime)* | `CLOUDBUILD_SERVICE_ACCOUNT_PRD` | Lido em runtime por `deploy.yml` — passado como `--service-account` no `gcloud builds submit` do job INF | `projects/prj-.../serviceAccounts/sa-cloudbuild-inf@....iam.gserviceaccount.com` |
 
-`pipeline_root`, `template_uri` e `service_account` (Vertex AI), montados em `model-config.yaml`/passados ao Cloud Workflow, existem em `init_variables` do workflow mas não são usados em nenhum step dele hoje — ficam ali como reserva para o dia em que o workflow também disparar um pipeline de treino/deploy do Vertex AI.
+`pipeline_root`, `template_uri` e `service_account` (Vertex AI), montados em `model-config.yaml`/passados ao Cloud Workflow, existem em `init_variables` do workflow mas não são usados em nenhum step dele hoje — ficam ali como reserva para o dia em que o workflow também disparar um pipeline de treino/deploy do Vertex AI. `included_tags` (fixo em `"prod"`) está no mesmo caso — declarado em `init_variables`, mas as linhas que o consumiriam (`invocationConfig.includedTags`, pra restringir a execução do Dataform/agendamento a actions com essa tag) estão comentadas em `start_dataform_invocation`/`setup_workflow_config`/`patch_workflow_config`; hoje não tem efeito nenhum.
+
+`ah_location` existe separado de `location` porque a Data Exchange do Analytics Hub pode estar numa região diferente do repositório Dataform — todo request a `analyticshub.googleapis.com` usa `ah_location`, todo request a `dataform.googleapis.com` usa `location`.
+
+## Ações do Cloud Workflow (`action`)
+
+`model_promotion_workflow.yaml` aceita um input `action` (default `"RUN"`, o que `dev.yaml`/`prod.yaml` sempre disparam) que funciona como control plane — `route_action` direciona pra uma de 5 rotas; qualquer outro valor aborta com erro:
+
+- **`RUN`** — compila + executa o Dataform, depois publica/atualiza ou apaga o listing (`publish_to_hub`) e cria/atualiza ou apaga o agendamento nativo (`schedule_enabled`) — ver seção abaixo.
+- **`DELETE_LISTING`** — apaga só o listing do Analytics Hub, sem tocar no Dataform nem no agendamento.
+- **`DELETE_SCHEDULE`** — apaga o agendamento nativo (`workflowConfigs/agendamento-diario` → `releaseConfigs/release-diaria`), sem tocar no Dataform nem no listing.
+- **`PAUSE_SCHEDULE`** / **`RESUME_SCHEDULE`** — suspende/retoma o agendamento sem apagar os recursos: troca o `cronSchedule` do `workflowConfigs/agendamento-diario` pra string vazia (pausa) ou de volta pro cron parametrizado (retoma).
+
+As 4 últimas são pra intervenção manual pontual, sem precisar editar `vars.env`/dar push — disparadas direto via `gcloud workflows run <nome> --location=<region> --project=<project> --data='{"action": "DELETE_SCHEDULE"}'` (mais os demais inputs obrigatórios do ambiente, ver `check_missing_inputs` no workflow).
+
+Os steps que apagam listing (`delete_listing`) e agendamento (`delete_workflow_schedule`/`delete_release_schedule`) são compartilhados entre o `RUN` (quando `publish_to_hub`/`schedule_enabled` é `false`) e as actions standalone acima — um pequeno roteador (`route_after_delete_listing`/`route_after_delete_schedule`) decide o retorno final conforme `action` (`success_run` dentro do `RUN`, `success_action` nas actions standalone), pra não duplicar a chamada de delete em dois lugares.
 
 ## Agendamento (Dataform) e listing (Analytics Hub) — controle só por variável
 
@@ -100,7 +115,7 @@ Não precisa de nenhum secret além dos já existentes (`workload_identity_provi
 - **`SCHEDULE_NPROD_ENABLED`** (`dev.yaml`, branch `modelagem`) e **`SCHEDULE_PROD_ENABLED`** (`prod.yaml`, branch `main`) — `true` cria/atualiza o agendamento nativo ao final do run; `false` apaga o que existir (tolerante a 404 — não falha se já não existir). Uma chave por ambiente porque modelagem e inferência normalmente têm necessidades diferentes de retreino agendado.
 - **`LISTING_PROD_ENABLED`** (só `prod.yaml` — `dev.yaml` nunca publica no Analytics Hub, isso não muda) — `true` publica/atualiza o listing; `false` apaga o listing existente em vez de só deixar de atualizá-lo, pra flag realmente refletir o que está publicado.
 
-Reativar depois de desabilitar é só voltar a flag pra `True` em `vars.env` e deixar o próximo push recriar o recurso — nenhuma ação manual (`gcloud`/Console) é necessária. As actions standalone do workflow (`DELETE_LISTING`, `DELETE_SCHEDULE`, `PAUSE_SCHEDULE`, `RESUME_SCHEDULE`, disparáveis via `gcloud workflows run ... --data='{"action": "..."}'`) continuam existindo à parte, para intervenção manual pontual sem precisar editar `vars.env`/dar push.
+Reativar depois de desabilitar é só voltar a flag pra `True` em `vars.env` e deixar o próximo push recriar o recurso — nenhuma ação manual (`gcloud`/Console) é necessária. Para intervenção manual pontual sem editar `vars.env`/dar push, ver as actions standalone (`DELETE_LISTING`, `DELETE_SCHEDULE`, `PAUSE_SCHEDULE`, `RESUME_SCHEDULE`) na seção acima.
 
 ## Três mecanismos de variável — não confunda os três
 
