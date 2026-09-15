@@ -24,6 +24,12 @@ main:
           - git_commitish: ${map.get(input, "git_commitish")}       
 
            # --- Parâmetros de Agendamento (Schedule) ---
+          # schedule_enabled controla, dentro do fluxo RUN, se o agendamento
+          # nativo do Dataform (release-diaria/agendamento-diario) é
+          # criado/atualizado (true) ou apagado (false) ao final desta
+          # execução — ver route_schedule mais abaixo. Vem de
+          # SCHEDULE_NPROD_ENABLED (dev.yaml) / SCHEDULE_PROD_ENABLED (prod.yaml).
+          - schedule_enabled: ${default(map.get(input, "schedule_enabled"), true)}
           - cron_release_config: ${default(map.get(input, "cron_release_config"), "*/5 * * * *")}
           - cron_workflow_config: ${default(map.get(input, "cron_workflow_config"), "*/5 * * * *")}
           - time_zone: "America/Sao_Paulo"
@@ -157,10 +163,12 @@ main:
 
     - check_dataform_state:
         switch:
-          - condition: ${status_res.body.state == "SUCCEEDED" and publish_to_hub and git_commitish == "main"}
+          - condition: ${status_res.body.state == "SUCCEEDED" and git_commitish == "main" and publish_to_hub}
             next: publish_to_analytics_hub
-          - condition: ${status_res.body.state == "SUCCEEDED" and not publish_to_hub}
-            next: setup_release_config
+          - condition: ${status_res.body.state == "SUCCEEDED" and git_commitish == "main" and not publish_to_hub}
+            next: delete_listing_on_run
+          - condition: ${status_res.body.state == "SUCCEEDED" and git_commitish != "main"}
+            next: route_schedule
           - condition: ${status_res.body.state == "FAILED" or status_res.body.state == "CANCELLED"}
             next: dataform_failed
         next: wait_and_poll_dataform
@@ -203,7 +211,7 @@ main:
                 next: raise_ah_error
             - raise_ah_error:
                 raise: ${"Erro ao publicar no Analytics Hub - " + json.encode_to_string(e)}
-        next: setup_release_config
+        next: route_schedule
 
     - update_existing_listing:
         try:
@@ -217,11 +225,43 @@ main:
               description: ${listing_description}
           result: ah_update_res
         retry: ${http.default_retry}
-        next: setup_release_config
+        next: route_schedule
+
+    # --- Listing desabilitado (listing_enabled/publish_to_hub=false) na branch
+    # main: apaga o listing existente em vez de só pular a publicação, pra
+    # essa flag realmente refletir o estado do Analytics Hub. Tolerante a
+    # 404 (listing já não existe). ---
+    - delete_listing_on_run:
+        try:
+          call: http.delete
+          args:
+            url: ${"https://analyticshub.googleapis.com/v1/projects/" + project_id_hub + "/locations/" + ah_location + "/dataExchanges/" + data_exchange_id + "/listings/" + listing_id}
+            auth:
+              type: OAuth2
+        except:
+          as: e
+          steps:
+            - ignore_404_listing_on_run:
+                switch:
+                  - condition: ${e.code == 404}
+                    next: route_schedule
+                next: raise_listing_error_on_run
+            - raise_listing_error_on_run:
+                raise: ${"Erro ao deletar listing - " + json.encode_to_string(e)}
+        next: route_schedule
 
     # ==========================================================================
     # ⏱️ ETAPA 3: CONFIGURAR AGENDAMENTO (DATAFORM SCHEDULE)
     # ==========================================================================
+    # route_schedule decide, dentro do RUN, se o agendamento nativo do
+    # Dataform é criado/atualizado (schedule_enabled=true) ou apagado
+    # (schedule_enabled=false) — ver init_variables.
+    - route_schedule:
+        switch:
+          - condition: ${schedule_enabled}
+            next: setup_release_config
+        next: delete_workflow_schedule_on_run
+
     - setup_release_config:
         try:
           call: http.post
@@ -300,8 +340,52 @@ main:
               #   - ${included_tags}
         next: success_run
 
+    # --- Schedule desabilitado (schedule_enabled=false): apaga o agendamento
+    # nativo do Dataform em vez de criar/atualizar — cópia de
+    # delete_workflow_schedule/delete_release_schedule (rota abaixo, usada
+    # pela action standalone DELETE_SCHEDULE), mas terminando em success_run
+    # em vez de success_action por rodar dentro do fluxo RUN. Tolerante a 404
+    # (agendamento já não existe). ---
+    - delete_workflow_schedule_on_run:
+        try:
+          call: http.delete
+          args:
+            url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/workflowConfigs/agendamento-diario"}
+            auth:
+              type: OAuth2
+        except:
+          as: e
+          steps:
+            - ignore_404_workflow_on_run:
+                switch:
+                  - condition: ${e.code == 404}
+                    next: delete_release_schedule_on_run
+                next: raise_workflow_error_on_run
+            - raise_workflow_error_on_run:
+                raise: ${"Erro ao deletar Workflow Config - " + json.encode_to_string(e)}
+        next: delete_release_schedule_on_run
+
+    - delete_release_schedule_on_run:
+        try:
+          call: http.delete
+          args:
+            url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/releaseConfigs/release-diaria"}
+            auth:
+              type: OAuth2
+        except:
+          as: e
+          steps:
+            - ignore_404_release_on_run:
+                switch:
+                  - condition: ${e.code == 404}
+                    next: success_run
+                next: raise_release_error_on_run
+            - raise_release_error_on_run:
+                raise: ${"Erro ao deletar Release Config - " + json.encode_to_string(e)}
+        next: success_run
+
     - success_run:
-        return: ${if(publish_to_hub, "✅ SUCESSO - Dados processados, expostos no Analytics Hub e agendamentos validados!", "✅ SUCESSO - Dados processados e agendamentos validados (Analytics Hub ignorado).")}
+        return: ${(if(publish_to_hub, "Analytics Hub publicado", "Analytics Hub ignorado/listing removido")) + " | " + (if(schedule_enabled, "agendamento validado", "agendamento removido"))}
 
     # ==========================================================================
     # 🛠️ ROTAS DE GESTÃO E INFRAESTRUTURA (ACTIONS EXTRAS)

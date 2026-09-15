@@ -53,7 +53,7 @@ Cobre a **esteira de CI/CD completa**: gatilho do GitHub Actions, os dois arquiv
 - Um job `load-config` faz checkout, lê `vars.env` e repassa os valores (projetos, região, worker pools) pros outros jobs via `needs.load-config.outputs` — só assim dá pra usar esses valores no `if:`/`env` dos jobs de treino, já que o `if:` de um job é avaliado antes de qualquer step dele rodar. As branches que disparam cada job (`modelagem`/`main`) são hardcoded direto no `if:` de cada job, não vêm de `vars.env`.
 - Os jobs `train-and-evaluate-mdl`/`train-and-evaluate-inf` rodam `apply-vars.sh` logo depois do checkout — isso resolve os placeholders de `model-config.yaml` e os defaults de `.cloudbuild/*.yaml` **só no workspace daquele run**, nunca commitado. Na sequência, `gcloud builds submit` envia esse workspace já resolvido pro Cloud Build.
 
-Ou seja: **nenhum commit automático acontece** — nem para preencher placeholders, nem depois. `vars.env` é um arquivo normal e permanente do repositório, do mesmo jeito que `model-config.yaml`; editar um valor (trocar projeto, região, etc.) é só um commit de `vars.env`, sem precisar rodar nada.
+Ou seja: **nenhum commit automático acontece** — nem para preencher placeholders, nem depois. `vars.env` é um arquivo normal e permanente do repositório, do mesmo jeito que `model-config.yaml`; editar um valor (trocar projeto, região, etc.) é só um commit de `vars.env`, sem precisar rodar nada. Exceção: se algum valor for sensível, não versione esse `vars.env` preenchido — `vars.example.env` é só o modelo/exemplo, sem dado real.
 
 **Gatilhos:**
 - Push na branch `modelagem` dispara `train-and-evaluate-mdl`.
@@ -81,6 +81,9 @@ Não precisa de nenhum secret além dos já existentes (`workload_identity_provi
 | `__dataform_sa_prefix_serving__` | `DATAFORM_SA_PREFIX_SERVING` | `.cloudbuild/prod.yaml` | `sa-df-meuproduto-inf` |
 | `__data_exchange_id__` | `DATA_EXCHANGE_ID` | `.cloudbuild/dev.yaml`, `.cloudbuild/prod.yaml` | `exchange_meuproduto` |
 | `__listing_id__` | `LISTING_ID` | `.cloudbuild/dev.yaml`, `.cloudbuild/prod.yaml` | `listing_meuproduto` |
+| `__listing_prod_enabled__` | `LISTING_PROD_ENABLED` | `.cloudbuild/prod.yaml` (`workflow_inputs.publish_to_hub`) — literal Python `True`/`False`, sem aspas | `True` |
+| `__schedule_nprod_enabled__` | `SCHEDULE_NPROD_ENABLED` | `.cloudbuild/dev.yaml` (`workflow_inputs.schedule_enabled`) — literal Python `True`/`False`, sem aspas | `True` |
+| `__schedule_prod_enabled__` | `SCHEDULE_PROD_ENABLED` | `.cloudbuild/prod.yaml` (`workflow_inputs.schedule_enabled`) — literal Python `True`/`False`, sem aspas | `True` |
 | — *(hardcoded em `deploy.yml`, não em `vars.env`)* | branches `modelagem`/`main` | `if:` dos jobs `train-and-evaluate-mdl`/`train-and-evaluate-inf` | `modelagem`, `main` |
 | — *(hardcoded em `.cloudbuild/dev.yaml`/`prod.yaml`, não em `vars.env`)* | `git_commitish` | `workflow_inputs` — branch do repo Dataform a compilar; `dev.yaml` manda `modelagem`, `prod.yaml` manda `main` | `modelagem`, `main` |
 | — *(sem placeholder — só runtime)* | `WORKERPOOL_DEV` | Lido em runtime por `deploy.yml` (job `load-config`) | `workerpool-meuproduto-mdl` |
@@ -89,6 +92,15 @@ Não precisa de nenhum secret além dos já existentes (`workload_identity_provi
 | — *(sem placeholder — só runtime)* | `CLOUDBUILD_SERVICE_ACCOUNT_PRD` | Lido em runtime por `deploy.yml` — passado como `--service-account` no `gcloud builds submit` do job INF | `projects/prj-.../serviceAccounts/sa-cloudbuild-inf@....iam.gserviceaccount.com` |
 
 `pipeline_root`, `template_uri` e `service_account` (Vertex AI), montados em `model-config.yaml`/passados ao Cloud Workflow, existem em `init_variables` do workflow mas não são usados em nenhum step dele hoje — ficam ali como reserva para o dia em que o workflow também disparar um pipeline de treino/deploy do Vertex AI.
+
+## Agendamento (Dataform) e listing (Analytics Hub) — controle só por variável
+
+`model_promotion_workflow.yaml` mantém, via API do Dataform, um agendamento nativo (`releaseConfigs/release-diaria` + `workflowConfigs/agendamento-diario`) que recompila/reexecuta o repositório periodicamente, independente do push que disparou a esteira. Três flags booleanas (literal Python `True`/`False`, ver tabela acima) decidem se cada esteira cria/mantém esses recursos ou os apaga — **sempre dentro do mesmo `RUN` que já compila e roda o Dataform**, nunca como uma ação separada:
+
+- **`SCHEDULE_NPROD_ENABLED`** (`dev.yaml`, branch `modelagem`) e **`SCHEDULE_PROD_ENABLED`** (`prod.yaml`, branch `main`) — `true` cria/atualiza o agendamento nativo ao final do run; `false` apaga o que existir (tolerante a 404 — não falha se já não existir). Uma chave por ambiente porque modelagem e inferência normalmente têm necessidades diferentes de retreino agendado.
+- **`LISTING_PROD_ENABLED`** (só `prod.yaml` — `dev.yaml` nunca publica no Analytics Hub, isso não muda) — `true` publica/atualiza o listing; `false` apaga o listing existente em vez de só deixar de atualizá-lo, pra flag realmente refletir o que está publicado.
+
+Reativar depois de desabilitar é só voltar a flag pra `True` em `vars.env` e deixar o próximo push recriar o recurso — nenhuma ação manual (`gcloud`/Console) é necessária. As actions standalone do workflow (`DELETE_LISTING`, `DELETE_SCHEDULE`, `PAUSE_SCHEDULE`, `RESUME_SCHEDULE`, disparáveis via `gcloud workflows run ... --data='{"action": "..."}'`) continuam existindo à parte, para intervenção manual pontual sem precisar editar `vars.env`/dar push.
 
 ## Três mecanismos de variável — não confunda os três
 
@@ -102,8 +114,8 @@ Recursos que precisam já existir nos projetos de destino — este pipeline não
 
 - **APIs habilitadas** em cada projeto: Cloud Build, Cloud Workflows, Dataform e, se `publish_to_hub=true`, Analytics Hub.
 - **Repositório Dataform** já criado em cada projeto (`DATAFORM_REPOSITORY_ID`), com `workflow_settings.yaml`/`definitions/` na raiz do repositório Git e as branches `modelagem`/`main` disponíveis no remoto — é o que `git_commitish` vai referenciar.
-- **Service accounts do Dataform** (`DATAFORM_SA_PREFIX_TRAIN`/`_SERVING`) já criadas em cada projeto, com permissão para executar o Dataform.
-- **Worker Pools privados do Cloud Build** (`WORKERPOOL_DEV`/`WORKERPOOL_PROD`) e as **service accounts de execução do Cloud Build** (`CLOUDBUILD_SERVICE_ACCOUNT_NPRD`/`_PRD`) já provisionados, com permissão de rodar build no respectivo projeto.
+- **Service accounts do Dataform** (`DATAFORM_SA_PREFIX_TRAIN`/`_SERVING`) já criadas em cada projeto, com permissão para executar o Dataform. Cada chave é só o prefixo (account_id, antes do `@`) — o domínio (`@<project_id>.iam.gserviceaccount.com`) é montado em runtime a partir do projeto do ambiente. São SAs diferentes (uma por ambiente/projeto), por isso duas chaves em vez de uma só compartilhada.
+- **Worker Pools privados do Cloud Build** (`WORKERPOOL_DEV`/`WORKERPOOL_PROD`) e as **service accounts de execução do Cloud Build** (`CLOUDBUILD_SERVICE_ACCOUNT_NPRD`/`_PRD`) já provisionados, com permissão de rodar build no respectivo projeto. `NPRD` = ambiente de modelagem/dev (MDL), `PRD` = inferência (INF) — essa é a identidade que roda os *steps* do build (`--service-account` do `gcloud builds submit`), diferente de `TRAIN_SERVICE_ACCOUNT`/`SERVING_SERVICE_ACCOUNT` (usada só para implantar/rodar o Cloud Workflow, `gcloud workflows deploy --service-account=`). Formato exigido pelo `gcloud`: caminho completo do recurso, não só o e-mail (ver coluna Exemplo na tabela acima).
 - **Secrets do repositório GitHub**: `workload_identity_provider_gcp` e `service_account_gcp` (Workload Identity Federation) — a identidade autenticada por eles precisa poder submeter builds usando `CLOUDBUILD_SERVICE_ACCOUNT_NPRD`/`_PRD`.
 - Se `publish_to_hub=true`: a **Data Exchange** do Analytics Hub (`DATA_EXCHANGE_ID`) já criada no projeto `HUB_PROJECT_ID`.
 

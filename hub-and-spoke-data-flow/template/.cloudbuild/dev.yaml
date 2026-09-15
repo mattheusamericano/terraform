@@ -9,6 +9,7 @@ substitutions:
   _HUB_PROJECT_ID: '__hub_project_id__'
   _DATA_EXCHANGE_ID: '__data_exchange_id__'
   _LISTING_ID: '__listing_id__'
+  _SCHEDULE_ENABLED: '__schedule_nprod_enabled__'
 
 steps:
   # -------------------------------------------------------------
@@ -96,7 +97,8 @@ steps:
             'publish_to_hub': False,  # modelagem só compila/roda o Dataform, não publica no Analytics Hub
             'project_id_hub': '${_HUB_PROJECT_ID}',
             'data_exchange_id': '${_DATA_EXCHANGE_ID}',
-            'listing_id': '${_LISTING_ID}'
+            'listing_id': '${_LISTING_ID}',
+            'schedule_enabled': ${_SCHEDULE_ENABLED},  # SCHEDULE_NPROD_ENABLED em vars.env
         }
 
         workflow_name = '${_WORKFLOW_NAME}'

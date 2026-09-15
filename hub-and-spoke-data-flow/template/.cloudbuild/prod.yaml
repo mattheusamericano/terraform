@@ -9,6 +9,8 @@ substitutions:
   _HUB_PROJECT_ID: '__hub_project_id__'
   _DATA_EXCHANGE_ID: '__data_exchange_id__'
   _LISTING_ID: '__listing_id__'
+  _SCHEDULE_ENABLED: '__schedule_prod_enabled__'
+  _LISTING_ENABLED: '__listing_prod_enabled__'
 
 steps:
   # -------------------------------------------------------------
@@ -93,10 +95,11 @@ steps:
             'dataform_service_account': f'${_DATAFORM_SA_PREFIX_SERVING}@{project_id}.iam.gserviceaccount.com',
             'git_commitish': 'main',  # branch do repo Dataform correspondente ao ambiente de produção
             'trigger_id': '',  # Desativado pois o deploy agora é nativo ao final do pipeline da Vertex
-            'publish_to_hub': True,  # produção publica o listing no Analytics Hub ao final do Dataform
+            'publish_to_hub': ${_LISTING_ENABLED},  # LISTING_PROD_ENABLED em vars.env — false apaga o listing existente
             'project_id_hub': '${_HUB_PROJECT_ID}',
             'data_exchange_id': '${_DATA_EXCHANGE_ID}',
-            'listing_id': '${_LISTING_ID}'
+            'listing_id': '${_LISTING_ID}',
+            'schedule_enabled': ${_SCHEDULE_ENABLED},  # SCHEDULE_PROD_ENABLED em vars.env
         }
 
         workflow_name = '${_WORKFLOW_NAME}'
