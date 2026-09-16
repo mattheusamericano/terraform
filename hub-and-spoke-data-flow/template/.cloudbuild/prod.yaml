@@ -2,7 +2,7 @@ substitutions:
   _TAG_NAME: 'v1.0.0'
   _REGION: '__region__'
   _WORKFLOW_NAME: '__workflow_name__'
-  _WORKFLOW_SOURCE_FILE: 'pipelines/model_promotion_workflow.yaml'
+  _WORKFLOW_SOURCE_FILE: 'pipelines/dataform_promotion_workflow.yaml'
   _DATAFORM_REPOSITORY_ID: '__dataform_repository_id__'
   _DATAFORM_SA_PREFIX_SERVING: '__dataform_sa_prefix_serving__'
   _ARTIFACT_REGISTRY_INDEX_URL: '__artifact_registry_index_url__'
@@ -11,6 +11,8 @@ substitutions:
   _LISTING_ID: '__listing_id__'
   _SCHEDULE_ENABLED: '__schedule_prod_enabled__'
   _RESUME_SCHEDULE_ENABLED: '__resume_schedule_prod_enabled__'
+  _SCHEDULE_INTERVAL_UNIT: '__schedule_prod_interval_unit__'
+  _SCHEDULE_INTERVAL_VALUE: '__schedule_prod_interval_value__'
   _LISTING_ENABLED: '__listing_prod_enabled__'
 
 steps:
@@ -102,6 +104,8 @@ steps:
             'listing_id': '${_LISTING_ID}',
             'schedule_enabled': ${_SCHEDULE_ENABLED},  # SCHEDULE_PROD_ENABLED em vars.env
             'resume_schedule_enabled': ${_RESUME_SCHEDULE_ENABLED},  # RESUME_SCHEDULE_PROD_ENABLED em vars.env — false pausa o agendamento (cronSchedule vazio) sem apagar os recursos
+            'schedule_interval_unit': '${_SCHEDULE_INTERVAL_UNIT}',  # SCHEDULE_PROD_INTERVAL_UNIT em vars.env — minute, hour ou day
+            'schedule_interval_value': ${_SCHEDULE_INTERVAL_VALUE},  # SCHEDULE_PROD_INTERVAL_VALUE em vars.env — inteiro, ex.: 5 (minute) = a cada 5 minutos
         }
 
         workflow_name = '${_WORKFLOW_NAME}'

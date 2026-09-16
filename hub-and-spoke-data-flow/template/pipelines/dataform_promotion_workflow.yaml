@@ -17,8 +17,12 @@ main:
 
           - schedule_enabled: ${default(map.get(input, "schedule_enabled"), true)}
           - resume_schedule_enabled: ${default(map.get(input, "resume_schedule_enabled"), true)}
-          - cron_release_config: ${default(map.get(input, "cron_release_config"), "*/5 * * * *")}
-          - cron_workflow_config: ${default(map.get(input, "cron_workflow_config"), "*/5 * * * *")}
+          - schedule_interval_unit: ${default(map.get(input, "schedule_interval_unit"), "minuto")}
+          - schedule_interval_value: ${default(map.get(input, "schedule_interval_value"), 5)}
+          # traduz unit+value (minuto/hora/dia) num cron de 5 campos — unit inválida cai no default "minuto"
+          - default_schedule_cron: ${if(schedule_interval_unit == "hora", "0 */" + string(schedule_interval_value) + " * * *", if(schedule_interval_unit == "dia", "0 0 */" + string(schedule_interval_value) + " * *", "*/" + string(schedule_interval_value) + " * * * *"))}
+          - cron_release_config: ${default(map.get(input, "cron_release_config"), default_schedule_cron)}
+          - cron_workflow_config: ${default(map.get(input, "cron_workflow_config"), default_schedule_cron)}
           - time_zone: "America/Sao_Paulo"
           - included_tags: "prod"
 

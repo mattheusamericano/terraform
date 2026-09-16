@@ -14,7 +14,7 @@ flowchart TD
     B --> D["Cloud Build: dev.yaml\n(spoke de modelagem)"]
     C --> E["Cloud Build: prod.yaml\n(spoke de inferência)"]
 
-    D --> F["Cloud Workflow: model_promotion_workflow"]
+    D --> F["Cloud Workflow: dataform_promotion_workflow"]
     E --> F
 
     F --> G["Dataform: compila + executa\n(branch modelagem ou main)"]
@@ -22,7 +22,7 @@ flowchart TD
     G -->|"publish_to_hub=false\n(fluxo de modelagem)"| I["Fim — só Dataform"]
 ```
 
-Os dois `.cloudbuild/*.yaml` implantam a **mesma definição** de Cloud Workflow (`pipelines/model_promotion_workflow.yaml`) em projetos diferentes e a disparam de forma assíncrona logo em seguida — o Cloud Build não espera o Dataform terminar.
+Os dois `.cloudbuild/*.yaml` implantam a **mesma definição** de Cloud Workflow (`pipelines/dataform_promotion_workflow.yaml`) em projetos diferentes e a disparam de forma assíncrona logo em seguida — o Cloud Build não espera o Dataform terminar.
 
 ## O que este pipeline cobre
 
@@ -44,7 +44,7 @@ Cobre a **esteira de CI/CD completa**: gatilho do GitHub Actions, os dois arquiv
     │   ├── dev.yaml                         # implanta + dispara o Cloud Workflow no spoke de modelagem (branch)
     │   └── prod.yaml                        # implanta + dispara o Cloud Workflow no spoke de inferência (branch main)
     └── pipelines/
-        └── model_promotion_workflow.yaml    # Cloud Workflow de promoção (Dataform + Analytics Hub)
+        └── dataform_promotion_workflow.yaml    # Cloud Workflow de promoção (Dataform + Analytics Hub)
 ```
 
 ## Como funciona
@@ -66,7 +66,7 @@ Não precisa de nenhum secret além dos já existentes (`workload_identity_provi
 | Placeholder | Chave em `vars.env` | Onde aparece | Exemplo |
 |---|---|---|---|
 | `__dataset_id__` | `DATASET_ID` | `model-config.yaml` | `served` |
-| `__region__` | `REGION` | `.cloudbuild/dev.yaml`, `.cloudbuild/prod.yaml`, `model-config.yaml`, `model_promotion_workflow.yaml` (default de `location`/`ah_location`) | `southamerica-east1` |
+| `__region__` | `REGION` | `.cloudbuild/dev.yaml`, `.cloudbuild/prod.yaml`, `model-config.yaml`, `dataform_promotion_workflow.yaml` (default de `location`/`ah_location`) | `southamerica-east1` |
 | `__train_project_id__` | `TRAIN_PROJECT_ID` | `model-config.yaml`; lido também em runtime por `deploy.yml` (job `load-config`) | `prj-meuproduto-mdl-prd` |
 | `__serving_project_id__` | `SERVING_PROJECT_ID` | `model-config.yaml`; lido também em runtime por `deploy.yml` (job `load-config`) | `prj-meuproduto-inf-prd` |
 | `__hub_project_id__` | `HUB_PROJECT_ID` | `.cloudbuild/dev.yaml`, `.cloudbuild/prod.yaml` | `prj-hub-poc` |
@@ -86,6 +86,10 @@ Não precisa de nenhum secret além dos já existentes (`workload_identity_provi
 | `__schedule_prod_enabled__` | `SCHEDULE_PROD_ENABLED` | `.cloudbuild/prod.yaml` (`workflow_inputs.schedule_enabled`) — literal Python `True`/`False`, sem aspas | `True` |
 | `__resume_schedule_nprod_enabled__` | `RESUME_SCHEDULE_NPROD_ENABLED` | `.cloudbuild/dev.yaml` (`workflow_inputs.resume_schedule_enabled`) — literal Python `True`/`False`, sem aspas | `True` |
 | `__resume_schedule_prod_enabled__` | `RESUME_SCHEDULE_PROD_ENABLED` | `.cloudbuild/prod.yaml` (`workflow_inputs.resume_schedule_enabled`) — literal Python `True`/`False`, sem aspas | `True` |
+| `__schedule_nprod_interval_unit__` | `SCHEDULE_NPROD_INTERVAL_UNIT` | `.cloudbuild/dev.yaml` (`workflow_inputs.schedule_interval_unit`) — string, entre aspas | `minuto` |
+| `__schedule_nprod_interval_value__` | `SCHEDULE_NPROD_INTERVAL_VALUE` | `.cloudbuild/dev.yaml` (`workflow_inputs.schedule_interval_value`) — literal Python inteiro, sem aspas | `5` |
+| `__schedule_prod_interval_unit__` | `SCHEDULE_PROD_INTERVAL_UNIT` | `.cloudbuild/prod.yaml` (`workflow_inputs.schedule_interval_unit`) — string, entre aspas | `minuto` |
+| `__schedule_prod_interval_value__` | `SCHEDULE_PROD_INTERVAL_VALUE` | `.cloudbuild/prod.yaml` (`workflow_inputs.schedule_interval_value`) — literal Python inteiro, sem aspas | `5` |
 | — *(hardcoded em `deploy.yml`, não em `vars.env`)* | branches `modelagem`/`main` | `if:` dos jobs `train-and-evaluate-mdl`/`train-and-evaluate-inf` | `modelagem`, `main` |
 | — *(hardcoded em `.cloudbuild/dev.yaml`/`prod.yaml`, não em `vars.env`)* | `git_commitish` | `workflow_inputs` — branch do repo Dataform a compilar; `dev.yaml` manda `modelagem`, `prod.yaml` manda `main` | `modelagem`, `main` |
 | — *(sem placeholder — só runtime)* | `WORKERPOOL_DEV` | Lido em runtime por `deploy.yml` (job `load-config`) | `workerpool-meuproduto-mdl` |
@@ -99,7 +103,7 @@ Não precisa de nenhum secret além dos já existentes (`workload_identity_provi
 
 ## Ações do Cloud Workflow (`action`)
 
-`model_promotion_workflow.yaml` aceita um input `action` (default `"RUN"`, o que `dev.yaml`/`prod.yaml` sempre disparam) que funciona como control plane — `route_action` direciona pra uma de 5 rotas; qualquer outro valor aborta com erro:
+`dataform_promotion_workflow.yaml` aceita um input `action` (default `"RUN"`, o que `dev.yaml`/`prod.yaml` sempre disparam) que funciona como control plane — `route_action` direciona pra uma de 5 rotas; qualquer outro valor aborta com erro:
 
 - **`RUN`** — compila + executa o Dataform, depois publica/atualiza ou apaga o listing (`publish_to_hub`) e cria/atualiza ou apaga o agendamento nativo (`schedule_enabled`) — ver seção abaixo.
 - **`DELETE_LISTING`** — apaga só o listing do Analytics Hub, sem tocar no Dataform nem no agendamento.
@@ -112,17 +116,18 @@ Os steps que apagam listing (`delete_listing`) e agendamento (`delete_workflow_s
 
 ## Agendamento (Dataform) e listing (Analytics Hub) — controle só por variável
 
-`model_promotion_workflow.yaml` mantém, via API do Dataform, um agendamento nativo (`releaseConfigs/release-diaria` + `workflowConfigs/agendamento-diario`) que recompila/reexecuta o repositório periodicamente, independente do push que disparou a esteira. Flags booleanas (literal Python `True`/`False`, ver tabela acima) decidem se cada esteira cria/mantém esses recursos ou os apaga — **sempre dentro do mesmo `RUN` que já compila e roda o Dataform**, nunca como uma ação separada:
+`dataform_promotion_workflow.yaml` mantém, via API do Dataform, um agendamento nativo (`releaseConfigs/release-diaria` + `workflowConfigs/agendamento-diario`) que recompila/reexecuta o repositório periodicamente, independente do push que disparou a esteira. Flags booleanas (literal Python `True`/`False`, ver tabela acima) decidem se cada esteira cria/mantém esses recursos ou os apaga — **sempre dentro do mesmo `RUN` que já compila e roda o Dataform**, nunca como uma ação separada:
 
 - **`SCHEDULE_NPROD_ENABLED`** (`dev.yaml`, branch `modelagem`) e **`SCHEDULE_PROD_ENABLED`** (`prod.yaml`, branch `main`) — `true` cria/atualiza o agendamento nativo ao final do run; `false` apaga o que existir (tolerante a 404 — não falha se já não existir). Uma chave por ambiente porque modelagem e inferência normalmente têm necessidades diferentes de retreino agendado.
 - **`RESUME_SCHEDULE_NPROD_ENABLED`** (`dev.yaml`) e **`RESUME_SCHEDULE_PROD_ENABLED`** (`prod.yaml`) — só importam quando a `SCHEDULE_*_ENABLED` do mesmo ambiente é `true` (o recurso existe). `true` grava `disabled: false` em `releaseConfigs/release-diaria` e `workflowConfigs/agendamento-diario` (agendamento ativo); `false` grava `disabled: true` nos dois (agendamento pausado), sem apagar os recursos e sem mexer no `cronSchedule`. É o mesmo efeito das actions standalone `PAUSE_SCHEDULE`/`RESUME_SCHEDULE`, só que reaplicado a cada `RUN` em vez de exigir intervenção manual.
 - **`LISTING_PROD_ENABLED`** (só `prod.yaml` — `dev.yaml` nunca publica no Analytics Hub, isso não muda) — `true` publica/atualiza o listing; `false` apaga o listing existente em vez de só deixar de atualizá-lo, pra flag realmente refletir o que está publicado.
+- **`SCHEDULE_NPROD_INTERVAL_UNIT`/`SCHEDULE_NPROD_INTERVAL_VALUE`** (`dev.yaml`) e **`SCHEDULE_PROD_INTERVAL_UNIT`/`SCHEDULE_PROD_INTERVAL_VALUE`** (`prod.yaml`) — definem a cadência do agendamento nativo sem precisar escrever cron na mão. `INTERVAL_UNIT` aceita `minuto`, `hora` ou `dia`; `INTERVAL_VALUE` é o número de unidades. O workflow (`init_variables` em `dataform_promotion_workflow.yaml`) traduz isso num cron de 5 campos: `minuto` + `5` → `*/5 * * * *` (a cada 5 minutos), `hora` + `2` → `0 */2 * * *` (a cada 2 horas, no minuto 0), `dia` + `1` → `0 0 */1 * *` (uma vez por dia, meia-noite). Uma unidade inválida (typo) cai silenciosamente no formato de `minuto`. Vale pros dois recursos (`releaseConfigs/release-diaria` e `workflowConfigs/agendamento-diario`) — não há cadência separada entre compilação e execução. Quem quiser um cron mais específico ainda pode passar `cron_release_config`/`cron_workflow_config` direto no input do workflow (via `gcloud workflows run`), que tem prioridade sobre a cadência calculada.
 
 Reativar depois de desabilitar é só voltar a flag pra `True` em `vars.env` e deixar o próximo push recriar o recurso — nenhuma ação manual (`gcloud`/Console) é necessária. Para intervenção manual pontual sem editar `vars.env`/dar push, ver as actions standalone (`DELETE_LISTING`, `DELETE_SCHEDULE`, `PAUSE_SCHEDULE`, `RESUME_SCHEDULE`) na seção acima.
 
 ## Três mecanismos de variável — não confunda os três
 
-1. **Placeholders `__CHAVE__`** (`model-config.yaml`, `.cloudbuild/*.yaml`, `model_promotion_workflow.yaml`): resolvidos por `apply-vars.sh` em runtime, dentro do job de treino, a cada execução.
+1. **Placeholders `__CHAVE__`** (`model-config.yaml`, `.cloudbuild/*.yaml`, `dataform_promotion_workflow.yaml`): resolvidos por `apply-vars.sh` em runtime, dentro do job de treino, a cada execução.
 2. **Chaves lidas direto de `vars.env` em runtime** (`WORKERPOOL_DEV`, `WORKERPOOL_PROD`, `CLOUDBUILD_SERVICE_ACCOUNT_NPRD`, `CLOUDBUILD_SERVICE_ACCOUNT_PRD`, e também `TRAIN_PROJECT_ID`/`SERVING_PROJECT_ID`/`REGION` no job `load-config`): nunca viram `__PLACEHOLDER__` em arquivo nenhum — `deploy.yml` extrai cada uma direto do arquivo (`grep`/`cut`) e usa o valor na hora. As branches (`modelagem`/`main`) e o `git_commitish` do Dataform NÃO entram nesse mecanismo — são hardcoded direto no `if:` de cada job (`deploy.yml`) e no `workflow_inputs` de cada `.cloudbuild/*.yaml`, justamente pra cada ambiente sempre apontar pro seu próprio valor sem depender de uma chave compartilhada em `vars.env`.
 3. **`substitutions:` do Cloud Build** (dentro de `.cloudbuild/dev.yaml`/`prod.yaml`, ex.: `_REGION`, `_TAG_NAME`): esses `_VAR` do Cloud Build já vêm resolvidos pelo mecanismo 1 (via `apply-vars.sh`) antes do `gcloud builds submit`. `_TAG_NAME` é exceção histórica — era passado via `--substitutions` a cada build do lado de produção pra refletir a tag `vX.Y.Z` da release; desde que o gatilho por tag foi removido de `deploy.yml` (ver seção Gatilhos), `deploy.yml` não sobrescreve mais esse valor, então `_TAG_NAME` sempre usa o default `'v1.0.0'` declarado em `prod.yaml` — hoje é vestigial (nem chega a ser usado em `workflow_inputs`).
 
