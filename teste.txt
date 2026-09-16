@@ -1,0 +1,215 @@
+Vou consolidar a análise do inventário, identificar os acessos mais recorrentes por perfil de grupo e propor uma matriz-padrão para novos projetos GCP da CAIXA. Para evitar transformar permissões históricas excessivas em padrão corporativo, separei o escopo em permissões-base, aplicáveis no nascimento do projeto, e permissões condicionais, atribuídas somente quando o produto ou atividade estiver presente.
+Análise do inventário IAM
+O arquivo recebido é o CSV Inventário GCP Caixa - Rascunho_Inventário IAM_Tabela (3).csv, contendo 2.350 registros de concessões IAM. Todos os principais do inventário são grupos, portanto não foram encontradas contas de serviço como membros. Conforme solicitado, também desconsiderei as concessões cujo recurso-alvo era uma Service Account, como roles/iam.serviceAccountUser e roles/iam.serviceAccountTokenCreator. [Inventário...Tabela (3) | Excel]
+Para classificar os grupos, utilizei os identificadores encontrados nos nomes:
+DTSC e DATASCIENCE: Data Scientists.
+ENG e BIGDATA_ENG: Data Engineers.
+RISCFAB: grupo corporativo RISCFAB.
+Não existe no inventário um padrão nominal específico e consistente para grupos de Machine Learning Engineers. Para esse perfil, utilizei as permissões informadas no texto e os acessos recorrentes associados a roles/iam.mlEngineer.
+A coluna Total foi somada quando a mesma combinação de grupo e role apareceu em mais de um recurso.
+Permissões mais utilizadas por grupos
+Data Scientists
+Foram identificados 23 grupos compatíveis com o perfil de Data Scientist. As permissões com maior cobertura entre esses grupos foram:
+roles/notebooks.runner: presente em 22 grupos, com 48 ocorrências consolidadas.
+roles/iam.dataScientist: presente em 21 grupos, com 48 ocorrências.
+roles/iam.roleViewer: presente em 21 grupos, com 48 ocorrências.
+roles/aiplatform.user: presente em 21 grupos, com 41 ocorrências.
+roles/dataform.editor: presente em 21 grupos, com 32 ocorrências.
+roles/storage.admin: presente em 18 grupos, com 43 ocorrências.
+roles/secretmanager.viewer: presente em 16 grupos.
+roles/bigquery.admin: presente em 15 grupos.
+roles/bigquery.dataEditor: presente em 14 grupos, com 42 ocorrências.
+Roles do Dataplex, como roles/dataplex.editor, roles/dataplex.developer, roles/dataplex.catalogEditor e roles/dataplex.dataProductsAdmin, aparecem em 9 grupos.
+Esse resultado confirma forte recorrência de Vertex AI, notebooks, Dataform, BigQuery, Storage e Dataplex no trabalho dos Data Scientists. Também revela concessões excessivas, principalmente roles/bigquery.admin e roles/storage.admin, que não devem ser automaticamente replicadas como padrão em todos os projetos. [Inventário...Tabela (3) | Excel]
+Data Engineers
+Foram identificados 19 grupos compatíveis com o perfil de Data Engineer. As principais permissões encontradas foram:
+roles/bigquery.admin: presente nos 19 grupos.
+roles/cloudaicompanion.user: presente nos 19 grupos.
+roles/compute.admin: presente nos 19 grupos.
+roles/aiplatform.admin: presente em 17 grupos.
+roles/aiplatform.user: presente em 17 grupos.
+roles/aiplatform.viewer: presente em 17 grupos.
+roles/bigquery.dataEditor: presente em 17 grupos.
+roles/bigquery.jobUser: presente em 17 grupos.
+roles/cloudbuild.connectionAdmin: presente em 17 grupos.
+roles/composer.admin: presente em 17 grupos.
+roles/compute.networkViewer: presente em 17 grupos.
+roles/dataflow.admin: presente em 17 grupos.
+roles/dataform.admin: presente em 17 grupos.
+roles/dataplex.admin: presente em 17 grupos.
+roles/dataplex.entryOwner: presente em 17 grupos.
+roles/dataproc.worker: presente em 17 grupos.
+roles/iam.mlEngineer: presente em 17 grupos.
+roles/iap.httpsResourceAccessor: presente em 17 grupos.
+O perfil de Data Engineer apresenta a maior concentração de roles administrativas. Essa recorrência provavelmente reflete o modelo atual de concessão, mas não significa que BigQuery Admin, Compute Admin, Dataplex Admin, Dataflow Admin e Vertex AI Admin devam formar um pacote automático para qualquer novo projeto. [Inventário...Tabela (3) | Excel]
+Grupo RISCFAB
+O grupo G_GCP_RISCFAB_DTSC aparece em diversos projetos e possui um conjunto extremamente amplo de permissões. As mais recorrentes são:
+roles/bigquery.dataEditor: 29 ocorrências consolidadas.
+roles/aiplatform.admin: 27.
+roles/composer.admin: 26.
+roles/iam.dataScientist: 26.
+roles/aiplatform.viewer: 25.
+roles/dataproc.worker: 25.
+roles/iam.roleViewer: 25.
+roles/iap.httpsResourceAccessor: 25.
+roles/notebooks.runner: 25.
+roles/run.developer: 25.
+roles/cloudbuild.connectionAdmin: 24.
+roles/iam.mlEngineer: 24.
+roles/logging.viewer: 24.
+roles/storage.admin: 24.
+roles/analyticshub.admin: 22.
+roles/dataplex.admin: 22.
+roles/bigquery.admin: 20.
+roles/aiplatform.user: 19.
+roles/bigquery.jobUser: 19.
+roles/dataform.admin: 19.
+A análise demonstra que o RISCFAB funciona, na prática, como um grupo corporativo transversal, acumulando permissões de Data Science, engenharia, MLOps e administração de plataforma. Replicar integralmente esse conjunto em todos os novos projetos criaria um acesso administrativo generalizado. [Inventário...Tabela (3) | Excel]
+Machine Learning Engineers
+O inventário não possui grupos claramente identificados por um sufixo exclusivo de Machine Learning Engineer. Entretanto, roles/iam.mlEngineer aparece em 21 grupos diferentes quando analisadas as concessões em nível de projeto, sendo uma das roles mais recorrentes do conjunto. Ela está normalmente associada a Vertex AI, Cloud Run, Cloud Build, IAP, Artifact Registry, notebooks, BigQuery e visualização de logs. [Inventário...Tabela (3) | Excel]
+Novo escopo-padrão de permissões
+A proposta abaixo preserva as permissões indicadas inicialmente, incorpora os padrões relevantes encontrados no inventário e evita levar todas as roles administrativas históricas para novos projetos.
+A recomendação segue o princípio de menor privilégio: primeiro devem ser identificadas as tarefas e os serviços utilizados, depois escolhida a role predefinida mais adequada e o menor escopo de recurso possível. A própria documentação do Google Cloud recomenda esse processo para seleção de roles predefinidas. Consultar orientação oficial do Google Cloud
+Grupo RISCFAB
+Permissões-base
+roles/iam.dataScientist → Perfil funcional de Cientista de Dados.
+roles/aiplatform.admin → Administração dos recursos do Vertex AI.
+roles/iam.roleViewer → Consulta das roles e permissões disponíveis.
+roles/logging.viewer → Consulta dos logs do projeto.
+roles/bigquery.jobUser → Execução de consultas e jobs no BigQuery.
+roles/notebooks.runner → Execução de notebooks.
+roles/iap.httpsResourceAccessor → Acesso a aplicações protegidas por IAP.
+Permissões condicionais
+roles/bigquery.dataEditor → Alteração de dados em datasets expressamente autorizados.
+roles/storage.objectAdmin → Gerenciamento de objetos em buckets determinados.
+roles/composer.admin → Administração do Cloud Composer quando houver ambiente Composer no projeto.
+roles/dataplex.admin → Administração do Dataplex quando o grupo exercer governança sobre lakes, zones ou catálogos.
+roles/analyticshub.admin → Administração do Analytics Hub somente em projetos publicadores ou administradores de exchanges.
+roles/dataflow.admin → Administração de pipelines Dataflow quando essa responsabilidade estiver atribuída ao RISCFAB.
+roles/workflows.admin → Administração do Workflows quando houver orquestração gerida pelo grupo.
+Não incluir automaticamente
+roles/bigquery.admin
+roles/storage.admin
+roles/compute.admin
+roles/owner
+roles/editor
+Essas roles devem depender de justificativa formal, escopo definido e aprovação de segurança.
+Machine Learning Engineers
+Permissões-base
+roles/iam.mlEngineer → Perfil funcional de engenharia de Machine Learning.
+roles/iap.httpsResourceAccessor → Acesso a aplicações protegidas por IAP.
+roles/run.developer → Desenvolvimento e atualização de workloads no Cloud Run.
+roles/aiplatform.user → Criação e utilização de recursos operacionais do Vertex AI.
+roles/aiplatform.viewer → Visualização dos recursos do Vertex AI.
+roles/iam.roleViewer → Consulta das roles IAM disponíveis.
+roles/notebooks.runner → Execução de notebooks.
+roles/logging.viewer → Consulta de logs para diagnóstico.
+roles/bigquery.jobUser → Execução de jobs e consultas utilizados pelos pipelines de ML.
+roles/artifactregistry.writer → Publicação de imagens e artefatos nos repositórios autorizados.
+Permissões condicionais
+roles/cloudbuild.connectionAdmin → Administração de conexões do Cloud Build somente para responsáveis pela integração de repositórios.
+roles/cloudbuild.builds.editor → Criação e gerenciamento de builds quando o grupo operar pipelines CI/CD.
+roles/dataform.editor → Edição de repositórios Dataform quando o pipeline de ML possuir transformação de dados.
+roles/dataproc.worker → Execução de workloads Dataproc.
+roles/dataflow.developer → Desenvolvimento e execução de pipelines Dataflow.
+roles/secretmanager.secretAccessor → Leitura apenas dos segredos necessários ao workload.
+roles/storage.objectAdmin → Gerenciamento de objetos apenas nos buckets de artefatos, modelos ou dados intermediários.
+roles/workflows.admin → Administração da orquestração somente quando o grupo for proprietário do workflow.
+Não incluir automaticamente
+roles/aiplatform.admin
+roles/compute.admin
+roles/storage.admin
+roles/bigquery.admin
+roles/dataplex.admin
+roles/composer.admin
+Data Scientists
+Permissões-base
+roles/iam.dataScientist → Perfil funcional de Cientista de Dados.
+roles/aiplatform.user → Utilização dos recursos do Vertex AI.
+roles/iam.roleViewer → Consulta das roles IAM.
+roles/dataform.editor → Edição dos projetos Dataform autorizados.
+roles/notebooks.runner → Execução de notebooks.
+roles/bigquery.jobUser → Execução de consultas e jobs no BigQuery.
+roles/logging.viewer → Consulta de logs para diagnóstico de notebooks, jobs e pipelines.
+roles/aiplatform.viewer → Visualização dos recursos e modelos do Vertex AI.
+Permissões condicionais
+roles/bigquery.dataViewer → Leitura de datasets de origem, preferencialmente concedida no dataset.
+roles/bigquery.dataEditor → Escrita apenas em datasets de trabalho, experimentação ou saída.
+roles/storage.objectViewer → Leitura de objetos nos buckets de dados autorizados.
+roles/storage.objectAdmin → Escrita e gerenciamento de objetos em buckets de trabalho.
+roles/secretmanager.viewer → Visualização de metadados de segredos, sem acesso ao conteúdo.
+roles/secretmanager.secretAccessor → Leitura do conteúdo de segredos específicos quando indispensável.
+roles/dataplex.developer → Desenvolvimento em recursos Dataplex autorizados.
+roles/dataplex.catalogEditor → Edição de metadados quando o cientista for responsável pela catalogação.
+roles/run.developer → Publicação de aplicações ou APIs de modelos no Cloud Run.
+roles/pubsub.editor → Desenvolvimento com tópicos e subscriptions quando houver processamento orientado a eventos.
+Substituição recomendada
+Substituir roles/storage.admin por roles/storage.objectAdmin ou roles/storage.objectViewer, concedidos no bucket.
+Substituir roles/bigquery.admin por roles/bigquery.jobUser no projeto e roles/bigquery.dataViewer ou roles/bigquery.dataEditor no dataset.
+Data Engineers
+Permissões-base
+roles/aiplatform.viewer → Visualização dos recursos do Vertex AI.
+roles/iam.roleViewer → Consulta das roles IAM.
+roles/bigquery.dataEditor → Alteração de dados nos datasets autorizados.
+roles/bigquery.jobUser → Execução de consultas e jobs no BigQuery.
+roles/dataform.editor → Desenvolvimento em repositórios Dataform.
+roles/dataproc.worker → Execução de workloads no Dataproc.
+roles/notebooks.runner → Execução de notebooks operacionais.
+roles/logging.viewer → Consulta dos logs do projeto.
+roles/compute.networkViewer → Visualização da configuração de rede necessária ao diagnóstico.
+roles/iap.httpsResourceAccessor → Acesso a aplicações internas protegidas por IAP.
+Permissões condicionais
+roles/composer.admin → Administração do Composer apenas para o grupo proprietário do ambiente.
+roles/dataflow.admin → Administração de pipelines Dataflow quando o perfil operar toda a plataforma.
+roles/dataform.admin → Administração de repositórios e configurações Dataform.
+roles/dataplex.admin → Administração do Dataplex somente para responsáveis pela plataforma ou domínio.
+roles/dataplex.entryOwner → Gerenciamento de entries específicas do catálogo.
+roles/cloudbuild.connectionAdmin → Administração de conexões utilizadas pelos pipelines.
+roles/run.developer → Implantação de serviços e jobs de integração no Cloud Run.
+roles/storage.objectAdmin → Gerenciamento de objetos nos buckets de entrada, processamento e saída.
+roles/secretmanager.secretAccessor → Acesso somente aos segredos necessários aos pipelines.
+roles/workflows.admin → Administração dos workflows de orquestração.
+roles/pubsub.editor → Criação e administração de tópicos e subscriptions do domínio.
+Substituição recomendada
+Substituir roles/storage.admin por roles/storage.objectAdmin no bucket.
+Substituir roles/bigquery.admin por roles/bigquery.jobUser no projeto e roles/bigquery.dataEditor no dataset.
+Substituir roles/compute.admin por roles específicas do recurso efetivamente administrado.
+Manter roles/composer.admin, roles/dataflow.admin e roles/dataplex.admin fora do pacote-base.
+Destaques para Segurança
+Roles administrativas que exigem aprovação
+roles/aiplatform.admin
+roles/composer.admin
+roles/dataflow.admin
+roles/dataform.admin
+roles/dataplex.admin
+roles/analyticshub.admin
+roles/workflows.admin
+roles/cloudbuild.connectionAdmin
+roles/storage.admin
+roles/bigquery.admin
+roles/compute.admin
+Roles que não devem compor o padrão de projeto
+roles/owner
+roles/editor
+roles/viewer, quando uma role de leitura específica do serviço puder ser utilizada.
+roles/storage.admin, quando o requisito for somente administrar objetos.
+roles/bigquery.admin, quando o requisito puder ser atendido por roles de job e dataset.
+roles/compute.admin, quando o grupo não administrar integralmente os recursos Compute Engine.
+Modelo recomendado de concessão
+Roles de execução e visualização: no projeto.
+Dados do BigQuery: no dataset ou tabela.
+Objetos do Cloud Storage: no bucket.
+Segredos: no secret individual.
+Analytics Hub: no exchange ou listing.
+Service Accounts: concessão separada e específica, fora dos pacotes de perfil.
+Roles administrativas: acesso condicional, com aprovação e revisão periódica.
+Conclusão
+O inventário mostra que as quatro famílias de acesso estão tecnicamente coerentes com o uso de Vertex AI, BigQuery, Dataform, Composer, Dataplex, Dataproc, Cloud Run e notebooks. Entretanto, o cenário atual contém uma concentração elevada de roles Admin, principalmente nos grupos ENG e RISCFAB.
+O novo escopo deve, portanto, preservar as capacidades funcionais dos perfis, mas não copiar integralmente as permissões históricas. O padrão recomendado é:
+Pacote-base por perfil, concedido automaticamente.
+Módulos condicionais por produto, concedidos apenas quando o projeto utilizar o serviço.
+Roles administrativas submetidas à aprovação.
+Permissões sobre dados e objetos no menor recurso possível, evitando concessão ampla no projeto.
+Contas de serviço tratadas separadamente, sem inclusão automática nos grupos funcionais.
+Critérios aplicados
+A redação foi reorganizada por perfil, diferenciando concessões padrão, condicionais e administrativas. Também substituí alguns acessos amplos por alternativas de menor privilégio, preservando a capacidade operacional identificada no inventário e deixando explícitos os pontos que exigem aprovação de segurança.
