@@ -1,6 +1,7 @@
 main:
   params: [input]
   steps:
+    # lê e define valores padrão para todos os inputs do workflow
     - init_variables:
         assign:
           - action: ${default(map.get(input, "action"), "RUN")}
@@ -15,6 +16,7 @@ main:
           - git_commitish: ${map.get(input, "git_commitish")}
 
           - schedule_enabled: ${default(map.get(input, "schedule_enabled"), true)}
+          - resume_schedule_enabled: ${default(map.get(input, "resume_schedule_enabled"), true)}
           - cron_release_config: ${default(map.get(input, "cron_release_config"), "*/5 * * * *")}
           - cron_workflow_config: ${default(map.get(input, "cron_workflow_config"), "*/5 * * * *")}
           - time_zone: "America/Sao_Paulo"
@@ -31,6 +33,7 @@ main:
           - template_uri: ${map.get(input, "template_uri")}
           - service_account: ${map.get(input, "service_account")}
 
+    # monta lista de inputs obrigatórios que vieram nulos
     - check_missing_inputs:
         assign:
           - missing: []
@@ -44,6 +47,7 @@ main:
           - missing: ${if(publish_to_hub and listing_id == null, list.concat(missing, "listing_id"), missing)}
           - missing_str: ""
 
+    # concatena os nomes dos campos faltantes em uma string legível
     - build_missing_message:
         for:
           value: missing_field
@@ -53,11 +57,13 @@ main:
                 assign:
                   - missing_str: ${missing_str + missing_field + " "}
 
+    # interrompe o workflow se houver algum input obrigatório ausente
     - validate_required_inputs:
         switch:
           - condition: ${len(missing) > 0}
             raise: '${"Input(s) obrigatório(s) ausente(s): " + missing_str + "- confira se o placeholder/substitution correspondente está preenchido no vars.env (ou nos substitutions: de dev.yaml/prod.yaml). Veja também o log do step trigger-cloud-workflow-async no Cloud Build, que imprime o JSON completo enviado (Inputs: ...) antes de disparar o workflow."}'
 
+    # direciona o fluxo de acordo com a action recebida no input
     - route_action:
         switch:
           - condition: ${action == "DELETE_LISTING"}
@@ -72,9 +78,11 @@ main:
             next: set_dataform_env
         next: invalid_action_error
 
+    # erro para quando a action não bate com nenhum caso tratado
     - invalid_action_error:
         raise: ${"ERRO - Ação inválida ou não suportada -> [" + action + "]. Verifique o payload enviado."}
 
+    # define o ambiente do Dataform (modelagem/inferencia) conforme a branch
     - set_dataform_env:
         switch:
           - condition: '${git_commitish == "modelagem"}'
@@ -85,6 +93,7 @@ main:
             assign:
               - dataform_env: "inferencia"
 
+    # solicita a compilação do repositório Dataform
     - compile_dataform:
         try:
           call: http.post
@@ -100,10 +109,12 @@ main:
           result: compile_res
         retry: ${http.default_retry}
 
+    # guarda o nome do resultado de compilação retornado
     - set_compilation_name:
         assign:
           - compilation_name: ${compile_res.body.name}
 
+    # dispara a execução (workflow invocation) com base na compilação
     - start_dataform_invocation:
         try:
           call: http.post
@@ -118,10 +129,12 @@ main:
           result: invocation_res
         retry: ${http.default_retry}
 
+    # guarda o nome da invocation para consultar o status depois
     - get_invocation_name:
         assign:
           - invocation_name: ${invocation_res.body.name}
 
+    # consulta o status atual da invocation do Dataform
     - poll_dataform_status:
         try:
           call: http.get
@@ -132,6 +145,7 @@ main:
           result: status_res
         retry: ${http.default_retry}
 
+    # decide o próximo passo com base no estado da invocation
     - check_dataform_state:
         switch:
           - condition: ${status_res.body.state == "SUCCEEDED" and git_commitish == "main" and publish_to_hub}
@@ -144,15 +158,18 @@ main:
             next: dataform_failed
         next: wait_and_poll_dataform
 
+    # aguarda 15s e volta a checar o status (polling)
     - wait_and_poll_dataform:
         call: sys.sleep
         args:
           seconds: 15
         next: poll_dataform_status
 
+    # erro para quando a invocation falha ou é cancelada
     - dataform_failed:
         raise: ${"Dataform invocation failed with state " + status_res.body.state}
 
+    # cria a listing do dataset no Analytics Hub
     - publish_to_analytics_hub:
         try:
           call: http.post
@@ -178,6 +195,7 @@ main:
                 raise: ${"Erro ao publicar no Analytics Hub - " + json.encode_to_string(e)}
         next: route_schedule
 
+    # atualiza a listing existente quando a criação retorna conflito (409)
     - update_existing_listing:
         try:
           call: http.patch
@@ -192,12 +210,14 @@ main:
         retry: ${http.default_retry}
         next: route_schedule
 
+    # decide se cria/atualiza o agendamento ou se o remove
     - route_schedule:
         switch:
           - condition: ${schedule_enabled}
             next: setup_release_config
         next: delete_workflow_schedule
 
+    # cria o release config do Dataform
     - setup_release_config:
         try:
           call: http.post
@@ -221,6 +241,7 @@ main:
                 raise: ${"Erro na configuração da Release do Dataform - " + json.encode_to_string(e)}
         next: setup_workflow_config
 
+    # atualiza o release config quando ele já existe (409)
     - patch_release_config:
         call: http.patch
         args:
@@ -233,6 +254,7 @@ main:
             timeZone: ${time_zone}
         next: setup_workflow_config
 
+    # cria o workflow config (agendamento diário) do Dataform
     - setup_workflow_config:
         try:
           call: http.post
@@ -242,7 +264,7 @@ main:
               type: OAuth2
             body:
               releaseConfig: ${"projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/releaseConfigs/release-diaria"}
-              cronSchedule: ${cron_workflow_config}
+              cronSchedule: ${if(resume_schedule_enabled, cron_workflow_config, "")}
               timeZone: ${time_zone}
               invocationConfig:
                 serviceAccount: ${dataform_service_account}
@@ -258,6 +280,7 @@ main:
                 raise: ${"Erro na configuração de agendamento do Dataform - " + json.encode_to_string(e)}
         next: success_run
 
+    # atualiza o workflow config quando ele já existe (409)
     - patch_workflow_config:
         call: http.patch
         args:
@@ -266,15 +289,17 @@ main:
             type: OAuth2
           body:
             releaseConfig: ${"projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/releaseConfigs/release-diaria"}
-            cronSchedule: ${cron_workflow_config}
+            cronSchedule: ${if(resume_schedule_enabled, cron_workflow_config, "")}
             timeZone: ${time_zone}
             invocationConfig:
               serviceAccount: ${dataform_service_account}
         next: success_run
 
+    # retorno de sucesso para a action RUN
     - success_run:
         return: ${(if(publish_to_hub, "Analytics Hub publicado", "Analytics Hub ignorado/listing removido")) + " | " + (if(schedule_enabled, "agendamento validado", "agendamento removido"))}
 
+    # remove a listing do Analytics Hub (ignora se já não existir - 404)
     - delete_listing:
         try:
           call: http.delete
@@ -294,12 +319,14 @@ main:
                 raise: ${"Erro ao deletar listing - " + json.encode_to_string(e)}
         next: route_after_delete_listing
 
+    # após remover a listing, segue o fluxo normal ou finaliza (ação DELETE_LISTING)
     - route_after_delete_listing:
         switch:
           - condition: ${action == "RUN"}
             next: route_schedule
         next: success_action
 
+    # remove o workflow config de agendamento (ignora se já não existir - 404)
     - delete_workflow_schedule:
         try:
           call: http.delete
@@ -319,6 +346,7 @@ main:
                 raise: ${"Erro ao deletar Workflow Config - " + json.encode_to_string(e)}
         next: delete_release_schedule
 
+    # remove o release config de agendamento (ignora se já não existir - 404)
     - delete_release_schedule:
         try:
           call: http.delete
@@ -338,12 +366,14 @@ main:
                 raise: ${"Erro ao deletar Release Config - " + json.encode_to_string(e)}
         next: route_after_delete_schedule
 
+    # após remover o agendamento, segue o fluxo normal ou finaliza (ação DELETE_SCHEDULE)
     - route_after_delete_schedule:
         switch:
           - condition: ${action == "RUN"}
             next: success_run
         next: success_action
 
+    # pausa o agendamento zerando o cron do workflow config
     - pause_schedule:
         call: http.patch
         args:
@@ -354,6 +384,7 @@ main:
             cronSchedule: ""
         next: success_action
 
+    # retoma o agendamento restaurando o cron do workflow config
     - resume_schedule:
         call: http.patch
         args:
@@ -364,5 +395,6 @@ main:
             cronSchedule: ${cron_workflow_config}
         next: success_action
 
+    # retorno de sucesso para as actions de gestão (DELETE/PAUSE/RESUME)
     - success_action:
         return: ${"✅ SUCESSO - Ação de gestão de infraestrutura [" + action + "] concluída com sucesso."}

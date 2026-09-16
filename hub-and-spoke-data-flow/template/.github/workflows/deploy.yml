@@ -2,8 +2,6 @@ name: MLOps Model Training Deployment
 
 on:
   push:
-    tags:
-      - 'v*'
     branches:
       - modelagem
       - main
@@ -105,7 +103,7 @@ jobs:
   train-and-evaluate-inf:
     name: Train and Evaluate Model (INF)
     needs: load-config
-    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'
     runs-on: arc-runner-set-default-gcp-caixamlops-prod
     permissions:
       contents: read
@@ -139,5 +137,4 @@ jobs:
             --worker-pool="projects/${{ needs.load-config.outputs.project_id_inf }}/locations/${{ needs.load-config.outputs.region }}/workerPools/${{ needs.load-config.outputs.workerpool_inf }}" \
             --region=${{ needs.load-config.outputs.region }} \
             --service-account="${{ needs.load-config.outputs.cloudbuild_sa_prd }}" \
-            --substitutions="_TAG_NAME=${{ github.ref_name }}" \
             dataform-workflow

@@ -9,7 +9,7 @@ Pipeline de CI/CD para treino e promoção de modelo em arquitetura hub-and-spok
 ```mermaid
 flowchart TD
     A["Push"] -->|"branch modelagem"| B["GitHub Actions: train-and-evaluate-mdl"]
-    A -->|"branch main ou tag v*"| C["GitHub Actions: train-and-evaluate-inf"]
+    A -->|"branch main"| C["GitHub Actions: train-and-evaluate-inf"]
 
     B --> D["Cloud Build: dev.yaml\n(spoke de modelagem)"]
     C --> E["Cloud Build: prod.yaml\n(spoke de inferência)"]
@@ -42,7 +42,7 @@ Cobre a **esteira de CI/CD completa**: gatilho do GitHub Actions, os dois arquiv
     ├── model-config.yaml                    # config declarativa dos ambientes de treino/inferência
     ├── .cloudbuild/
     │   ├── dev.yaml                         # implanta + dispara o Cloud Workflow no spoke de modelagem (branch)
-    │   └── prod.yaml                        # implanta + dispara o Cloud Workflow no spoke de inferência (tags v*)
+    │   └── prod.yaml                        # implanta + dispara o Cloud Workflow no spoke de inferência (branch main)
     └── pipelines/
         └── model_promotion_workflow.yaml    # Cloud Workflow de promoção (Dataform + Analytics Hub)
 ```
@@ -57,7 +57,7 @@ Ou seja: **nenhum commit automático acontece** — nem para preencher placehold
 
 **Gatilhos:**
 - Push na branch `modelagem` dispara `train-and-evaluate-mdl`.
-- `train-and-evaluate-inf` dispara em **duas** situações — uma tag `v*`, ou push na branch `main` — o que vier primeiro.
+- Push na branch `main` dispara `train-and-evaluate-inf`. Não há mais gatilho por tag `v*` — foi removido porque, num fluxo de release normal (merge em `main` seguido de criação da tag no mesmo commit), os dois eventos de push disparavam o job duas vezes pro mesmo commit, duplicando a execução do Dataform/listing/agendamento em produção.
 
 Não precisa de nenhum secret além dos já existentes (`workload_identity_provider_gcp`, `service_account_gcp`) — como nada é commitado de volta, não existe a restrição do GitHub sobre alterar `.github/workflows/` (essa trava só se aplica quando o próprio Actions tenta dar push num arquivo de workflow; aqui isso nunca acontece).
 
@@ -84,6 +84,7 @@ Não precisa de nenhum secret além dos já existentes (`workload_identity_provi
 | `__listing_prod_enabled__` | `LISTING_PROD_ENABLED` | `.cloudbuild/prod.yaml` (`workflow_inputs.publish_to_hub`) — literal Python `True`/`False`, sem aspas | `True` |
 | `__schedule_nprod_enabled__` | `SCHEDULE_NPROD_ENABLED` | `.cloudbuild/dev.yaml` (`workflow_inputs.schedule_enabled`) — literal Python `True`/`False`, sem aspas | `True` |
 | `__schedule_prod_enabled__` | `SCHEDULE_PROD_ENABLED` | `.cloudbuild/prod.yaml` (`workflow_inputs.schedule_enabled`) — literal Python `True`/`False`, sem aspas | `True` |
+| `__resume_schedule_prod_enabled__` | `RESUME_SCHEDULE_PROD_ENABLED` | `.cloudbuild/prod.yaml` (`workflow_inputs.resume_schedule_enabled`) — literal Python `True`/`False`, sem aspas | `True` |
 | — *(hardcoded em `deploy.yml`, não em `vars.env`)* | branches `modelagem`/`main` | `if:` dos jobs `train-and-evaluate-mdl`/`train-and-evaluate-inf` | `modelagem`, `main` |
 | — *(hardcoded em `.cloudbuild/dev.yaml`/`prod.yaml`, não em `vars.env`)* | `git_commitish` | `workflow_inputs` — branch do repo Dataform a compilar; `dev.yaml` manda `modelagem`, `prod.yaml` manda `main` | `modelagem`, `main` |
 | — *(sem placeholder — só runtime)* | `WORKERPOOL_DEV` | Lido em runtime por `deploy.yml` (job `load-config`) | `workerpool-meuproduto-mdl` |
@@ -110,9 +111,10 @@ Os steps que apagam listing (`delete_listing`) e agendamento (`delete_workflow_s
 
 ## Agendamento (Dataform) e listing (Analytics Hub) — controle só por variável
 
-`model_promotion_workflow.yaml` mantém, via API do Dataform, um agendamento nativo (`releaseConfigs/release-diaria` + `workflowConfigs/agendamento-diario`) que recompila/reexecuta o repositório periodicamente, independente do push que disparou a esteira. Três flags booleanas (literal Python `True`/`False`, ver tabela acima) decidem se cada esteira cria/mantém esses recursos ou os apaga — **sempre dentro do mesmo `RUN` que já compila e roda o Dataform**, nunca como uma ação separada:
+`model_promotion_workflow.yaml` mantém, via API do Dataform, um agendamento nativo (`releaseConfigs/release-diaria` + `workflowConfigs/agendamento-diario`) que recompila/reexecuta o repositório periodicamente, independente do push que disparou a esteira. Flags booleanas (literal Python `True`/`False`, ver tabela acima) decidem se cada esteira cria/mantém esses recursos ou os apaga — **sempre dentro do mesmo `RUN` que já compila e roda o Dataform**, nunca como uma ação separada:
 
 - **`SCHEDULE_NPROD_ENABLED`** (`dev.yaml`, branch `modelagem`) e **`SCHEDULE_PROD_ENABLED`** (`prod.yaml`, branch `main`) — `true` cria/atualiza o agendamento nativo ao final do run; `false` apaga o que existir (tolerante a 404 — não falha se já não existir). Uma chave por ambiente porque modelagem e inferência normalmente têm necessidades diferentes de retreino agendado.
+- **`RESUME_SCHEDULE_PROD_ENABLED`** (só `prod.yaml`) — só importa quando `SCHEDULE_PROD_ENABLED=true` (o recurso existe). `true` grava o `cronSchedule` parametrizado (agendamento ativo); `false` grava `cronSchedule` vazio (agendamento pausado), sem apagar `releaseConfigs`/`workflowConfigs`. É o mesmo efeito das actions standalone `PAUSE_SCHEDULE`/`RESUME_SCHEDULE`, só que reaplicado a cada `RUN` em vez de exigir intervenção manual.
 - **`LISTING_PROD_ENABLED`** (só `prod.yaml` — `dev.yaml` nunca publica no Analytics Hub, isso não muda) — `true` publica/atualiza o listing; `false` apaga o listing existente em vez de só deixar de atualizá-lo, pra flag realmente refletir o que está publicado.
 
 Reativar depois de desabilitar é só voltar a flag pra `True` em `vars.env` e deixar o próximo push recriar o recurso — nenhuma ação manual (`gcloud`/Console) é necessária. Para intervenção manual pontual sem editar `vars.env`/dar push, ver as actions standalone (`DELETE_LISTING`, `DELETE_SCHEDULE`, `PAUSE_SCHEDULE`, `RESUME_SCHEDULE`) na seção acima.
@@ -121,7 +123,7 @@ Reativar depois de desabilitar é só voltar a flag pra `True` em `vars.env` e d
 
 1. **Placeholders `__CHAVE__`** (`model-config.yaml`, `.cloudbuild/*.yaml`, `model_promotion_workflow.yaml`): resolvidos por `apply-vars.sh` em runtime, dentro do job de treino, a cada execução.
 2. **Chaves lidas direto de `vars.env` em runtime** (`WORKERPOOL_DEV`, `WORKERPOOL_PROD`, `CLOUDBUILD_SERVICE_ACCOUNT_NPRD`, `CLOUDBUILD_SERVICE_ACCOUNT_PRD`, e também `TRAIN_PROJECT_ID`/`SERVING_PROJECT_ID`/`REGION` no job `load-config`): nunca viram `__PLACEHOLDER__` em arquivo nenhum — `deploy.yml` extrai cada uma direto do arquivo (`grep`/`cut`) e usa o valor na hora. As branches (`modelagem`/`main`) e o `git_commitish` do Dataform NÃO entram nesse mecanismo — são hardcoded direto no `if:` de cada job (`deploy.yml`) e no `workflow_inputs` de cada `.cloudbuild/*.yaml`, justamente pra cada ambiente sempre apontar pro seu próprio valor sem depender de uma chave compartilhada em `vars.env`.
-3. **`substitutions:` do Cloud Build** (dentro de `.cloudbuild/dev.yaml`/`prod.yaml`, ex.: `_REGION`, `_TAG_NAME`): esses `_VAR` do Cloud Build já vêm resolvidos pelo mecanismo 1 (via `apply-vars.sh`) antes do `gcloud builds submit`; a exceção é `_TAG_NAME`, que continua sendo passado por `--substitutions` a cada build (é a tag da release, varia a cada execução, não faz sentido vir de `vars.env`).
+3. **`substitutions:` do Cloud Build** (dentro de `.cloudbuild/dev.yaml`/`prod.yaml`, ex.: `_REGION`, `_TAG_NAME`): esses `_VAR` do Cloud Build já vêm resolvidos pelo mecanismo 1 (via `apply-vars.sh`) antes do `gcloud builds submit`. `_TAG_NAME` é exceção histórica — era passado via `--substitutions` a cada build do lado de produção pra refletir a tag `vX.Y.Z` da release; desde que o gatilho por tag foi removido de `deploy.yml` (ver seção Gatilhos), `deploy.yml` não sobrescreve mais esse valor, então `_TAG_NAME` sempre usa o default `'v1.0.0'` declarado em `prod.yaml` — hoje é vestigial (nem chega a ser usado em `workflow_inputs`).
 
 ## Pré-requisitos (antes do primeiro push)
 
