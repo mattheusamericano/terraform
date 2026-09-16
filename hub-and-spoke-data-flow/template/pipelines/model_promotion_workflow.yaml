@@ -229,6 +229,7 @@ main:
               gitCommitish: ${git_commitish}
               cronSchedule: ${cron_release_config}
               timeZone: ${time_zone}
+              disabled: ${not resume_schedule_enabled}
         except:
           as: e
           steps:
@@ -245,13 +246,14 @@ main:
     - patch_release_config:
         call: http.patch
         args:
-          url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/releaseConfigs/release-diaria?updateMask=gitCommitish,cronSchedule,timeZone"}
+          url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/releaseConfigs/release-diaria?updateMask=gitCommitish,cronSchedule,timeZone,disabled"}
           auth:
             type: OAuth2
           body:
             gitCommitish: ${git_commitish}
             cronSchedule: ${cron_release_config}
             timeZone: ${time_zone}
+            disabled: ${not resume_schedule_enabled}
         next: setup_workflow_config
 
     # cria o workflow config (agendamento diário) do Dataform
@@ -264,10 +266,11 @@ main:
               type: OAuth2
             body:
               releaseConfig: ${"projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/releaseConfigs/release-diaria"}
-              cronSchedule: ${if(resume_schedule_enabled, cron_workflow_config, "")}
+              cronSchedule: ${cron_workflow_config}
               timeZone: ${time_zone}
               invocationConfig:
                 serviceAccount: ${dataform_service_account}
+              disabled: ${not resume_schedule_enabled}
         except:
           as: e
           steps:
@@ -284,15 +287,16 @@ main:
     - patch_workflow_config:
         call: http.patch
         args:
-          url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/workflowConfigs/agendamento-diario?updateMask=releaseConfig,cronSchedule,timeZone,invocationConfig.serviceAccount,invocationConfig.includedTags"}
+          url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/workflowConfigs/agendamento-diario?updateMask=releaseConfig,cronSchedule,timeZone,invocationConfig.serviceAccount,invocationConfig.includedTags,disabled"}
           auth:
             type: OAuth2
           body:
             releaseConfig: ${"projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/releaseConfigs/release-diaria"}
-            cronSchedule: ${if(resume_schedule_enabled, cron_workflow_config, "")}
+            cronSchedule: ${cron_workflow_config}
             timeZone: ${time_zone}
             invocationConfig:
               serviceAccount: ${dataform_service_account}
+            disabled: ${not resume_schedule_enabled}
         next: success_run
 
     # retorno de sucesso para a action RUN
@@ -373,26 +377,48 @@ main:
             next: success_run
         next: success_action
 
-    # pausa o agendamento zerando o cron do workflow config
+    # pausa o release config via disabled=true (cronSchedule não muda)
     - pause_schedule:
         call: http.patch
         args:
-          url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/workflowConfigs/agendamento-diario?updateMask=cronSchedule"}
+          url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/releaseConfigs/release-diaria?updateMask=disabled"}
           auth:
             type: OAuth2
           body:
-            cronSchedule: ""
+            disabled: true
+        next: pause_workflow_schedule
+
+    # pausa o workflow config via disabled=true (cronSchedule não muda)
+    - pause_workflow_schedule:
+        call: http.patch
+        args:
+          url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/workflowConfigs/agendamento-diario?updateMask=disabled"}
+          auth:
+            type: OAuth2
+          body:
+            disabled: true
         next: success_action
 
-    # retoma o agendamento restaurando o cron do workflow config
+    # retoma o release config via disabled=false (cronSchedule não muda)
     - resume_schedule:
         call: http.patch
         args:
-          url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/workflowConfigs/agendamento-diario?updateMask=cronSchedule"}
+          url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/releaseConfigs/release-diaria?updateMask=disabled"}
           auth:
             type: OAuth2
           body:
-            cronSchedule: ${cron_workflow_config}
+            disabled: false
+        next: resume_workflow_schedule
+
+    # retoma o workflow config via disabled=false (cronSchedule não muda)
+    - resume_workflow_schedule:
+        call: http.patch
+        args:
+          url: ${"https://dataform.googleapis.com/v1beta1/projects/" + project_id + "/locations/" + location + "/repositories/" + repository_id + "/workflowConfigs/agendamento-diario?updateMask=disabled"}
+          auth:
+            type: OAuth2
+          body:
+            disabled: false
         next: success_action
 
     # retorno de sucesso para as actions de gestão (DELETE/PAUSE/RESUME)
