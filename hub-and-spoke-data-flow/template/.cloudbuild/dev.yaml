@@ -10,6 +10,7 @@ substitutions:
   _DATA_EXCHANGE_ID: '__data_exchange_id__'
   _LISTING_ID: '__listing_id__'
   _SCHEDULE_ENABLED: '__schedule_nprod_enabled__'
+  _RESUME_SCHEDULE_ENABLED: '__resume_schedule_nprod_enabled__'
 
 steps:
   # -------------------------------------------------------------
@@ -99,6 +100,7 @@ steps:
             'data_exchange_id': '${_DATA_EXCHANGE_ID}',
             'listing_id': '${_LISTING_ID}',
             'schedule_enabled': ${_SCHEDULE_ENABLED},  # SCHEDULE_NPROD_ENABLED em vars.env
+            'resume_schedule_enabled': ${_RESUME_SCHEDULE_ENABLED},  # RESUME_SCHEDULE_NPROD_ENABLED em vars.env — false pausa o agendamento (cronSchedule vazio) sem apagar os recursos
         }
 
         workflow_name = '${_WORKFLOW_NAME}'
