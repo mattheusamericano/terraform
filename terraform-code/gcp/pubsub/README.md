@@ -21,6 +21,19 @@ module "pubsub" {
         ambiente = "producao"
       }
     }
+
+    # exemplo com CMEK
+    "pst-cmek" = {
+      project_id     = "meu-projeto-gcp"
+      sigla          = "sqa"
+      labels = {
+        ambiente = "producao"
+      }
+      kms_project_id = "prj-hsm-services-prd"
+      region         = "southamerica-east1"
+      kms_key_ring   = "infrahsmPRDring"
+      kms_crypto_key = "infraPRDSYMAES256hsm001"
+    }
   }
 
   pubsub_settings = {
@@ -43,16 +56,21 @@ module "pubsub" {
 
 | Nome | Descrição | Tipo | Default | Obrigatório |
 |------|-----------|------|---------|:-----------:|
-| `pubsub_topic_settings` | Mapa de tópicos a serem criados. A chave do mapa é usada como parte do nome do tópico. `project_id` é o projeto onde o tópico será criado, `sigla` é um sufixo de nomenclatura e `labels` são rótulos livres associados à configuração. | `map(object({ project_id = string, sigla = string, labels = map(any) }))` | — | Sim |
-| `pubsub_settings` | Mapa de assinaturas (subscriptions) a serem criadas. A chave do mapa é usada como parte do nome da assinatura. `project_id` é o projeto onde a assinatura será criada, `topic_name` é o nome completo do tópico ao qual ela se vincula, `ack_deadline_seconds`, `message_retention_duration` e `retain_acked_messages` configuram o comportamento de entrega/retenção (ver Observações), `sigla` é um sufixo de nomenclatura e `labels` são rótulos aplicados à assinatura. | `map(object({ project_id = string, topic_name = string, ack_deadline_seconds = number, message_retention_duration = string, retain_acked_messages = optional(bool, true), sigla = string, labels = map(any) }))` | — | Sim |
+| `pubsub_topic_settings` | Mapa de tópicos a serem criados. A chave do mapa é usada como parte do nome do tópico. `project_id` é o projeto onde o tópico será criado, `sigla` é um sufixo de nomenclatura, `labels` são rótulos livres e `kms_project_id`/`region`/`kms_key_ring`/`kms_crypto_key` (opcionais, todos juntos ou nenhum) definem a chave CMEK usada para criptografar as mensagens do tópico — `region` aqui é a location da chave KMS (tópico Pub/Sub em si não é regional). | `map(object({ project_id = string, sigla = string, labels = map(any), kms_project_id = optional(string), region = optional(string), kms_key_ring = optional(string), kms_crypto_key = optional(string) }))` | — | Sim |
+| `pubsub_settings` | Mapa de assinaturas (subscriptions) a serem criadas. A chave do mapa é usada como parte do nome da assinatura. `project_id` é o projeto onde a assinatura será criada, `topic_name` é o nome completo do tópico ao qual ela se vincula, `ack_deadline_seconds`, `message_retention_duration` e `retain_acked_messages` configuram o comportamento de entrega/retenção, `sigla` é um sufixo de nomenclatura e `labels` são rótulos aplicados à assinatura. | `map(object({ project_id = string, topic_name = string, ack_deadline_seconds = number, message_retention_duration = string, retain_acked_messages = optional(bool, true), sigla = string, labels = map(any) }))` | — | Sim |
 
 ## Outputs
 
-Este módulo não define outputs.
+| Nome | Descrição |
+|------|-----------|
+| `pubsub_topics` | Mapa (mesma chave de `pubsub_topic_settings`) com `id`, `name`, `project` e `kms_key_name` de cada tópico criado |
+| `pubsub_subscriptions` | Mapa (mesma chave de `pubsub_settings`) com `id`, `name`, `project` e `topic` de cada assinatura criada |
 
 ## Observações
 
 - O nome final de cada recurso segue o padrão `${chave}-${sigla}-${terraform.workspace}`, garantindo unicidade entre workspaces (ex.: dev/hml/prd).
 - `google_pubsub_subscription.subs` depende explicitamente de `google_pubsub_topic.topic` (`depends_on`), mas essa dependência só é efetiva de fato quando o tópico referenciado em `topic_name` é criado pelo mesmo `apply` — o campo `topic` da assinatura é uma string livre, não uma referência direta ao recurso `google_pubsub_topic`, então nada impede apontar para um tópico já existente fora deste módulo.
-- **Atenção**: embora `ack_deadline_seconds`, `message_retention_duration` e `retain_acked_messages` estejam declarados em `pubsub_settings` e sejam exigidos/aceitos como input, o recurso `google_pubsub_subscription.subs` atualmente **ignora esses valores** e usa constantes fixas no código (`ack_deadline_seconds = 20`, `message_retention_duration = "1200s"`, `retain_acked_messages = true`). Ou seja, os valores informados nessas três chaves não têm efeito prático até que o `main.tf` seja ajustado para consumi-los.
 - Os mapas `pubsub_topic_settings` e `pubsub_settings` são independentes: é possível criar tópicos sem assinaturas (ou vice-versa) e não há vínculo automático de chaves entre os dois mapas — a ligação é feita manualmente via `topic_name`.
+- CMEK fica só no tópico — o Pub/Sub não tem CMEK por assinatura; a assinatura herda a criptografia do tópico ao qual está vinculada. O módulo monta o `kms_key_name` concatenando `kms_project_id`, `region`, `kms_key_ring` e `kms_crypto_key` (`local.pubsub_topic_kms_key_names` em `topic.tf`) — uma `validation` em `variables.tf` garante que os 4 sejam preenchidos juntos (ou nenhum, usando a chave gerenciada pelo Google). Também exige que a service account do Pub/Sub do projeto (`service-<PROJECT_NUMBER>@gcp-sa-pubsub.iam.gserviceaccount.com`) tenha `roles/cloudkms.cryptoKeyEncrypterDecrypter` na chave — não é concedido por este módulo.
+- **Corrigido**: até a versão anterior deste módulo, `google_pubsub_subscription.subs` ignorava `ack_deadline_seconds`, `message_retention_duration` e `retain_acked_messages` do input e usava constantes fixas no código (`20`, `"1200s"`, `true`). Agora o recurso usa os valores de `each.value` — se algum ambiente já provisionado tinha esses valores diferentes dos defaults antigos no seu `tfvars`, o próximo `apply` vai gerar diff nessas assinaturas, alinhando ao valor que sempre deveria ter sido aplicado.
+- O tópico também passou a aplicar `labels` (estava declarado como obrigatório em `pubsub_topic_settings` mas não era usado no recurso) — mesmo tipo de diff pode aparecer em tópicos já existentes que tinham `labels` preenchido no tfvars.
