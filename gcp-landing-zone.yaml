@@ -120,7 +120,7 @@ jobs:
                   exit 1
                 fi
 
-                bq query --use_legacy_sql=false \
+                bq query --use_legacy_sql=false --project_id="${{ parameters.projectName }}" \
                   "ALTER PROJECT \`${{ parameters.projectName }}\` SET OPTIONS (\`region-southamerica-east1.default_kms_key_name\`='......')"
       - ${{ else }}:
           - task: Bash@3
@@ -133,7 +133,7 @@ jobs:
                   exit 1
                 fi
 
-                bq query --use_legacy_sql=false \
+                bq query --use_legacy_sql=false --project_id="${{ parameters.projectName }}" \
                   "ALTER PROJECT \`${{ parameters.projectName }}\` SET OPTIONS (\`region-southamerica-east1.default_kms_key_name\`='......')"
 
       - task: Bash@3
