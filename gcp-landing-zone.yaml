@@ -109,6 +109,13 @@ jobs:
             gcloud services enable bigquery.googleapis.com \
               --project="${{ parameters.projectName }}"
 
+      - task: Bash@3
+        displayName: "Inicializar BigQuery Encryption Service Agent"
+        inputs:
+          targetType: inline
+          script: |
+            bq query --use_legacy_sql=false --project_id="${{ parameters.projectName }}" "SELECT 1"
+
       - ${{ if endsWith(parameters.projectName, '-prd') }}:
           - task: Bash@3
             displayName: "Conceder acesso à chave CMEK PRD para o BigQuery Encryption Service Agent"
@@ -132,11 +139,6 @@ jobs:
             inputs:
               targetType: inline
               script: |
-                if ! command -v bq &> /dev/null; then
-                  echo "##vso[task.logissue type=error]bq não encontrado na VM do agente (deveria vir junto com o Cloud SDK/gcloud)."
-                  exit 1
-                fi
-
                 bq query --use_legacy_sql=false --project_id="${{ parameters.projectName }}" \
                   "ALTER PROJECT \`${{ parameters.projectName }}\` SET OPTIONS (\`region-southamerica-east1.default_kms_key_name\`='projects/prj-hsm-services-prd/locations/southamerica-east1/keyRings/infrahsmPRDring/cryptoKeys/infraPRDSYMAES256hsm001')"
       - ${{ else }}:
@@ -162,11 +164,6 @@ jobs:
             inputs:
               targetType: inline
               script: |
-                if ! command -v bq &> /dev/null; then
-                  echo "##vso[task.logissue type=error]bq não encontrado na VM do agente (deveria vir junto com o Cloud SDK/gcloud)."
-                  exit 1
-                fi
-
                 bq query --use_legacy_sql=false --project_id="${{ parameters.projectName }}" \
                   "ALTER PROJECT \`${{ parameters.projectName }}\` SET OPTIONS (\`region-southamerica-east1.default_kms_key_name\`='projects/prj-hsm-services-des/locations/southamerica-east1/keyRings/infrahsmNPRDring/cryptoKeys/infraNPRDSYMAES256hsm001')"
 
