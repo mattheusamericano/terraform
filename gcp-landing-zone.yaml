@@ -109,14 +109,22 @@ jobs:
             gcloud services enable bigquery.googleapis.com \
               --project="${{ parameters.projectName }}"
 
-      - task: Bash@3
-        displayName: "Inicializar BigQuery Encryption Service Agent"
-        inputs:
-          targetType: inline
-          script: |
-            bq query --use_legacy_sql=false --project_id="${{ parameters.projectName }}" "SELECT 1"
-
       - ${{ if endsWith(parameters.projectName, '-prd') }}:
+          - task: Bash@3
+            displayName: "Definir CMEK default no BigQuery (PRD)"
+            inputs:
+              targetType: inline
+              script: |
+                bq query --use_legacy_sql=false --project_id="${{ parameters.projectName }}" \
+                  "ALTER PROJECT \`${{ parameters.projectName }}\` SET OPTIONS (\`region-southamerica-east1.default_kms_key_name\`='projects/prj-hsm-services-prd/locations/southamerica-east1/keyRings/infrahsmPRDring/cryptoKeys/infraPRDSYMAES256hsm001')"
+
+          - task: Bash@3
+            displayName: "Criar dataset temporário no BigQuery (PRD)"
+            inputs:
+              targetType: inline
+              script: |
+                bq mk --dataset --location="southamerica-east1" "${{ parameters.projectName }}:temp_init_dataset"
+
           - task: Bash@3
             displayName: "Conceder acesso à chave CMEK PRD para o BigQuery Encryption Service Agent"
             inputs:
@@ -127,21 +135,27 @@ jobs:
                   --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
 
           - task: Bash@3
-            displayName: "Aguardar propagação da permissão IAM na chave (PRD)"
+            displayName: "Deletar dataset temporário no BigQuery (PRD)"
             inputs:
               targetType: inline
               script: |
-                echo "Aguardando 60s para a permissão IAM na chave KMS replicar..."
-                sleep 60
-
+                bq rm -f -d "${{ parameters.projectName }}:temp_init_dataset"
+      - ${{ else }}:
           - task: Bash@3
-            displayName: "Definir CMEK default no BigQuery (PRD)"
+            displayName: "Definir CMEK default no BigQuery (NPRD)"
             inputs:
               targetType: inline
               script: |
                 bq query --use_legacy_sql=false --project_id="${{ parameters.projectName }}" \
-                  "ALTER PROJECT \`${{ parameters.projectName }}\` SET OPTIONS (\`region-southamerica-east1.default_kms_key_name\`='projects/prj-hsm-services-prd/locations/southamerica-east1/keyRings/infrahsmPRDring/cryptoKeys/infraPRDSYMAES256hsm001')"
-      - ${{ else }}:
+                  "ALTER PROJECT \`${{ parameters.projectName }}\` SET OPTIONS (\`region-southamerica-east1.default_kms_key_name\`='projects/prj-hsm-services-des/locations/southamerica-east1/keyRings/infrahsmNPRDring/cryptoKeys/infraNPRDSYMAES256hsm001')"
+
+          - task: Bash@3
+            displayName: "Criar dataset temporário no BigQuery (NPRD)"
+            inputs:
+              targetType: inline
+              script: |
+                bq mk --dataset --location="southamerica-east1" "${{ parameters.projectName }}:temp_init_dataset"
+
           - task: Bash@3
             displayName: "Conceder acesso à chave CMEK NPRD para o BigQuery Encryption Service Agent"
             inputs:
@@ -152,20 +166,11 @@ jobs:
                   --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
 
           - task: Bash@3
-            displayName: "Aguardar propagação da permissão IAM na chave (NPRD)"
+            displayName: "Deletar dataset temporário no BigQuery (NPRD)"
             inputs:
               targetType: inline
               script: |
-                echo "Aguardando 60s para a permissão IAM na chave KMS replicar..."
-                sleep 60
-
-          - task: Bash@3
-            displayName: "Definir CMEK default no BigQuery (NPRD)"
-            inputs:
-              targetType: inline
-              script: |
-                bq query --use_legacy_sql=false --project_id="${{ parameters.projectName }}" \
-                  "ALTER PROJECT \`${{ parameters.projectName }}\` SET OPTIONS (\`region-southamerica-east1.default_kms_key_name\`='projects/prj-hsm-services-des/locations/southamerica-east1/keyRings/infrahsmNPRDring/cryptoKeys/infraNPRDSYMAES256hsm001')"
+                bq rm -f -d "${{ parameters.projectName }}:temp_init_dataset"
 
       - task: Bash@3
         displayName: "Resumo"
