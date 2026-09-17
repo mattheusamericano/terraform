@@ -111,6 +111,23 @@ jobs:
 
       - ${{ if endsWith(parameters.projectName, '-prd') }}:
           - task: Bash@3
+            displayName: "Conceder acesso à chave CMEK PRD para o BigQuery Encryption Service Agent"
+            inputs:
+              targetType: inline
+              script: |
+                gcloud kms keys add-iam-policy-binding "projects/prj-hsm-services-prd/locations/southamerica-east1/keyRings/infrahsmPRDring/cryptoKeys/infraPRDSYMAES256hsm001" \
+                  --member="serviceAccount:bq-$(GetProjectNumber.PROJECT_NUMBER)@bigquery-encryption.iam.gserviceaccount.com" \
+                  --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+          - task: Bash@3
+            displayName: "Aguardar propagação da permissão IAM na chave (PRD)"
+            inputs:
+              targetType: inline
+              script: |
+                echo "Aguardando 60s para a permissão IAM na chave KMS replicar..."
+                sleep 60
+
+          - task: Bash@3
             displayName: "Definir CMEK default no BigQuery (PRD)"
             inputs:
               targetType: inline
@@ -121,8 +138,25 @@ jobs:
                 fi
 
                 bq query --use_legacy_sql=false --project_id="${{ parameters.projectName }}" \
-                  "ALTER PROJECT \`${{ parameters.projectName }}\` SET OPTIONS (\`region-southamerica-east1.default_kms_key_name\`='projects/prj-hsm-services-prd/locations/southamerica-east1/keyRings/infrahsmPRDring')"
+                  "ALTER PROJECT \`${{ parameters.projectName }}\` SET OPTIONS (\`region-southamerica-east1.default_kms_key_name\`='projects/prj-hsm-services-prd/locations/southamerica-east1/keyRings/infrahsmPRDring/cryptoKeys/infraPRDSYMAES256hsm001')"
       - ${{ else }}:
+          - task: Bash@3
+            displayName: "Conceder acesso à chave CMEK NPRD para o BigQuery Encryption Service Agent"
+            inputs:
+              targetType: inline
+              script: |
+                gcloud kms keys add-iam-policy-binding "projects/prj-hsm-services-des/locations/southamerica-east1/keyRings/infrahsmNPRDring/cryptoKeys/infraNPRDSYMAES256hsm001" \
+                  --member="serviceAccount:bq-$(GetProjectNumber.PROJECT_NUMBER)@bigquery-encryption.iam.gserviceaccount.com" \
+                  --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+          - task: Bash@3
+            displayName: "Aguardar propagação da permissão IAM na chave (NPRD)"
+            inputs:
+              targetType: inline
+              script: |
+                echo "Aguardando 60s para a permissão IAM na chave KMS replicar..."
+                sleep 60
+
           - task: Bash@3
             displayName: "Definir CMEK default no BigQuery (NPRD)"
             inputs:
