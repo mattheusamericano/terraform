@@ -121,7 +121,7 @@ jobs:
                 fi
 
                 bq query --use_legacy_sql=false --project_id="${{ parameters.projectName }}" \
-                  "ALTER PROJECT \`${{ parameters.projectName }}\` SET OPTIONS (\`region-southamerica-east1.default_kms_key_name\`='......')"
+                  "ALTER PROJECT \`${{ parameters.projectName }}\` SET OPTIONS (\`region-southamerica-east1.default_kms_key_name\`='projects/prj-hsm-services-prd/locations/southamerica-east1/keyRings/infrahsmPRDring')"
       - ${{ else }}:
           - task: Bash@3
             displayName: "Definir CMEK default no BigQuery (NPRD)"
@@ -134,7 +134,7 @@ jobs:
                 fi
 
                 bq query --use_legacy_sql=false --project_id="${{ parameters.projectName }}" \
-                  "ALTER PROJECT \`${{ parameters.projectName }}\` SET OPTIONS (\`region-southamerica-east1.default_kms_key_name\`='......')"
+                  "ALTER PROJECT \`${{ parameters.projectName }}\` SET OPTIONS (\`region-southamerica-east1.default_kms_key_name\`='projects/prj-hsm-services-des/locations/southamerica-east1/keyRings/infrahsmNPRDring/cryptoKeys/infraNPRDSYMAES256hsm001')"
 
       - task: Bash@3
         displayName: "Resumo"
