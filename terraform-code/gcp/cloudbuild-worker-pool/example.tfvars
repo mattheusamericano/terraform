@@ -24,6 +24,11 @@ worker_pool_settings = {
       squad    = "sudea"
     }
 
+    # CMEK do bucket padrão do Cloud Build (gs://prj-spoke-modelagem_cloudbuild)
+    kms_project_id = "prj-hsm-services-prd"
+    kms_key_ring   = "infrahsmPRDring"
+    kms_crypto_key = "infraPRDSYMAES256hsm001"
+
     # SA dedicada deste pool, criada e permissionada junto no mesmo for_each
     service_account = {
       display_name = "SA Cloud Build - pipeline modelagem SIPML"

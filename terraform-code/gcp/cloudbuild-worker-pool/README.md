@@ -8,7 +8,7 @@ Módulo Terraform para provisionar **Cloud Build Private Worker Pools** peerados
 - `google_service_account.cloudbuild` — uma SA por entrada de `worker_pool_settings` (bloco aninhado `service_account`), para uso em `service_account` do trigger/build
 - `google_project_iam_member.worker_pool_user` — concede `roles/cloudbuild.workerPoolUser` (com IAM Condition restringindo ao pool específico) aos principals listados em `worker_pool_users`, permitindo consumo cross-project do pool
 - `google_project_iam_member.cloudbuild_sa_roles` — concede à SA do Cloud Build cada role listada em `worker_pool_settings.*.service_account.roles`, no projeto correspondente
-- `google_storage_bucket.cloudbuild_default` — um bucket `<project_id>_cloudbuild` por projeto entre os worker pools (dedup automático — vários pools no mesmo projeto geram um único bucket); é o bucket que o Cloud Build usa por convenção para staging do source (`gcloud builds submit`)
+- `google_storage_bucket.cloudbuild_default` — um bucket `<project_id>_cloudbuild` por projeto entre os worker pools (dedup automático — vários pools no mesmo projeto geram um único bucket); é o bucket que o Cloud Build usa por convenção para staging do source (`gcloud builds submit`). Opcionalmente criptografado com CMEK (`kms_project_id`/`kms_key_ring`/`kms_crypto_key`).
 
 ## Como usar
 
@@ -30,6 +30,11 @@ module "cloudbuild_worker_pool" {
       ]
 
       annotations = { ambiente = "prd", squad = "sudea" }
+
+      # CMEK do bucket padrão do Cloud Build (gs://prj-spoke-modelagem_cloudbuild)
+      kms_project_id = "prj-hsm-services-prd"
+      kms_key_ring   = "infrahsmPRDring"
+      kms_crypto_key = "infraPRDSYMAES256hsm001"
 
       service_account = {
         display_name = "SA Cloud Build - pipeline modelagem SIPML"
@@ -54,13 +59,16 @@ module "cloudbuild_worker_pool" {
 | `worker_pool_settings.*.sigla` | Sigla do time/solução (compõe o nome do pool e o `account_id` da SA) | `string` | — | sim |
 | `worker_pool_settings.*.location` | Região do pool | `string` | — | sim |
 | `worker_pool_settings.*.network_project_id` | Projeto dono da VPC peerada | `string` | — | sim |
-| `worker_pool_settings.*.network_name` | Nome da VPC peerada | `string` | — | sim |
+| `worker_pool_settings.*.network_name` | Nome da VPC peerada — o módulo monta `peered_network = "projects/<network_project_id>/global/networks/<network_name>"` | `string` | — | sim |
 | `worker_pool_settings.*.peered_network_ip_range` | CIDR /29 explícito dentro do range reservado (PSA) | `string` | `null` (auto-alocação) | não |
 | `worker_pool_settings.*.machine_type` | Tipo de máquina dos workers | `string` | `e2-medium` | não |
 | `worker_pool_settings.*.disk_size_gb` | Disco dos workers | `number` | `100` | não |
 | `worker_pool_settings.*.no_external_ip` | Bloqueia IP externo nos workers | `bool` | `true` | não |
 | `worker_pool_settings.*.worker_pool_users` | Principals com `roles/cloudbuild.workerPoolUser` no pool | `list(string)` | `[]` | não |
 | `worker_pool_settings.*.annotations` | Annotations do pool | `map(string)` | `{}` | não |
+| `worker_pool_settings.*.kms_project_id` | Projeto onde vive a chave CMEK do bucket padrão do Cloud Build | `string` | `null` | não |
+| `worker_pool_settings.*.kms_key_ring` | Key ring da chave CMEK (usa a mesma `location` do pool como location da chave) | `string` | `null` | não |
+| `worker_pool_settings.*.kms_crypto_key` | Crypto key CMEK | `string` | `null` | não |
 | `worker_pool_settings.*.service_account` | Configuração da SA dedicada deste pool | `object({...})` | `{}` (usa os defaults internos) | não |
 | `worker_pool_settings.*.service_account.display_name` | Nome de exibição da SA | `string` | `"SA do Cloud Build - gerenciada via Terraform"` | não |
 | `worker_pool_settings.*.service_account.roles` | Lista de roles concedidas à SA no projeto — customizável por projeto/pipeline | `list(string)` | `["roles/bigquery.jobUser", "roles/bigquery.user", "roles/storage.objectAdmin"]` | não |
@@ -75,6 +83,7 @@ module "cloudbuild_worker_pool" {
 | `cloudbuild_sa_emails` | Mapa {chave => email} das SAs (usar em `service_account` do trigger) |
 | `cloudbuild_sa_ids` | Mapa {chave => id} das SAs |
 | `cloudbuild_default_bucket_names` | Mapa {project_id => name} dos buckets `<project_id>_cloudbuild` |
+| `cloudbuild_default_bucket_kms_key_names` | Mapa {project_id => kms_key_name} dos buckets. `null` quando o bucket daquele projeto não usa CMEK |
 
 ## Observações
 
@@ -85,4 +94,6 @@ module "cloudbuild_worker_pool" {
 - **SA custom no build**: ao usar `cloudbuild_sa_emails[...]` em `service_account` do trigger, é obrigatório declarar `options.logging = CLOUD_LOGGING_ONLY` (ou `GCS_ONLY` com `logsBucket` próprio) no `cloudbuild.yaml`/trigger — o Cloud Build não aceita mais o log padrão gerenciado pelo Google quando a SA não é a `default`.
 - **Habilitar a API** `cloudbuild.googleapis.com` no projeto do pool antes do `apply` (via `project_service`/`module.project_services`, se a stack já tiver esse padrão) — fora do escopo deste módulo.
 - Já existe um módulo `service_account` genérico no repositório (`terraform-code/gcp/service_account/`, sem IAM embutido). Optamos por manter a SA aqui em vez de compor com aquele módulo, seguindo o mesmo precedente de `bq_dataset` (SA dedicada + IAM inline no próprio módulo), já que a SA do Cloud Build nasce e é usada exclusivamente dentro deste contexto.
-- **Bucket padrão do Cloud Build é por PROJETO, não por pool**: se dois pools de `worker_pool_settings` apontarem pro mesmo `project_id`, o módulo cria só **um** bucket `<project_id>_cloudbuild` (dedup em `locals.cloudbuild_default_buckets`) — criar um bucket por chave de pool faria dois resources tentarem gerenciar o mesmo nome globalmente único, quebrando o `plan`/`apply`. A `location` usada é a do primeiro pool encontrado para aquele projeto; se os pools do mesmo projeto tiverem `location` diferente entre si, ajuste manualmente qual deve prevalecer.
+- **Por que o bucket padrão do Cloud Build é provisionado aqui**: `gs://<project_id>_cloudbuild` é o nome fixo que o próprio Cloud Build usa por convenção como destino de staging do source (`gcloud builds submit`) quando nenhum `--gcs-source-staging-dir` customizado é informado. Provisionar via Terraform evita depender da criação implícita do Cloud Build no primeiro build, que falha em projetos com Org Policy restringindo criação de bucket fora do Terraform.
+- **Bucket padrão do Cloud Build é por PROJETO, não por pool**: se dois pools de `worker_pool_settings` apontarem pro mesmo `project_id`, o módulo cria só **um** bucket `<project_id>_cloudbuild` (dedup em `locals.cloudbuild_default_buckets`) — criar um bucket por chave de pool faria dois resources tentarem gerenciar o mesmo nome globalmente único, quebrando o `plan`/`apply`. A `location` e o CMEK (`kms_project_id`/`kms_key_ring`/`kms_crypto_key`) usados são os do primeiro pool encontrado para aquele projeto (`locals.cloudbuild_first_pool_settings_by_project`); se os pools do mesmo projeto divergirem nesses valores entre si, ajuste manualmente qual deve prevalecer.
+- **CMEK do bucket padrão do Cloud Build**: `kms_project_id`, `kms_key_ring` e `kms_crypto_key` são opcionais, mas precisam vir juntos (validado em `variables.tf`) — quando informados, o módulo monta `kms_key_name = "projects/<kms_project_id>/locations/<location>/keyRings/<kms_key_ring>/cryptoKeys/<kms_crypto_key>"` e aplica no bloco `encryption` do bucket (a location da chave sempre reaproveita a `location` do pool, não é um campo separado). Exige que a service account de serviço do GCS do projeto (`service-<PROJECT_NUMBER>@gs-project-accounts.iam.gserviceaccount.com`) tenha `roles/cloudkms.cryptoKeyEncrypterDecrypter` na chave — o módulo não concede essa permissão.

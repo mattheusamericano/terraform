@@ -27,3 +27,8 @@ output "cloudbuild_default_bucket_names" {
   description = "Mapa {project_id => name} dos buckets padrão do Cloud Build (<project_id>_cloudbuild), um por projeto entre os worker pools."
   value       = { for project_id, bucket in google_storage_bucket.cloudbuild_default : project_id => bucket.name }
 }
+
+output "cloudbuild_default_bucket_kms_key_names" {
+  description = "Mapa {project_id => kms_key_name} dos buckets padrão do Cloud Build. null quando o bucket daquele projeto não usa CMEK (kms_project_id/kms_key_ring/kms_crypto_key não informados)."
+  value       = { for project_id, settings in local.cloudbuild_default_buckets : project_id => settings.kms_key_name }
+}
