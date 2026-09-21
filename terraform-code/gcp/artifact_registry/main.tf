@@ -11,4 +11,5 @@ resource "google_artifact_registry_repository" "artifact_registry" {
   description                   = each.value["description"]
   kms_key_name                  = local.artifact_registry_kms_key_names[each.key]
 
+  depends_on = [google_kms_crypto_key_iam_member.artifact_registry]
 }

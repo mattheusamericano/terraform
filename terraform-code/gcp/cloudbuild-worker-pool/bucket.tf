@@ -13,4 +13,6 @@ resource "google_storage_bucket" "cloudbuild_default" {
       default_kms_key_name = encryption.value
     }
   }
+
+  depends_on = [google_kms_crypto_key_iam_member.cloudbuild_bucket]
 }

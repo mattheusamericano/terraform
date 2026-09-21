@@ -43,4 +43,9 @@ locals {
       )
     }
   }
+
+  cloudbuild_bucket_cmek = {
+    for project_id, bucket in local.cloudbuild_default_buckets : project_id => bucket.kms_key_name
+    if bucket.kms_key_name != null
+  }
 }

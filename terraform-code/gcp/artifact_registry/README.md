@@ -5,6 +5,8 @@ Módulo Terraform simples para provisionar repositórios **Artifact Registry** n
 ## Recursos criados
 
 - `google_artifact_registry_repository.artifact_registry` — um repositório Artifact Registry por chave de `artifact_registry_settings`, com `repository_id` derivado da chave do mapa, formato, modo, localização, projeto, labels e política de limpeza (dry-run).
+- `google_project_service_identity.artifact_registry` — *(só com CMEK)* service agent do Artifact Registry, por projeto.
+- `google_kms_crypto_key_iam_member.artifact_registry` — *(só com CMEK)* concede `roles/cloudkms.cryptoKeyEncrypterDecrypter` na chave ao service agent, um binding por combinação projeto+chave.
 
 ## Como usar
 
@@ -78,4 +80,7 @@ module "artifact_registry" {
 - Não há configuração de política de limpeza (`cleanup_policies`) além do flag `cleanup_policy_dry_run` — o módulo não define regras de retenção/expiração de artefatos.
 - Não há IAM neste módulo: o acesso ao repositório deve ser gerenciado fora dele (ex.: via IAM de projeto ou outro módulo).
 - CMEK: o módulo monta o `kms_key_name` do repositório concatenando `kms_project_id`, `region` (reaproveitado como location da chave), `kms_key_ring` e `kms_crypto_key` (`local.artifact_registry_kms_key_names` em `main.tf`). Uma `validation` em `variables.tf` exige que `kms_project_id`, `kms_key_ring` e `kms_crypto_key` sejam preenchidos juntos (ou nenhum, e o repositório usa a chave gerenciada pelo Google). Como a chave sempre herda a mesma `region` do repositório, não é possível usar uma chave CMEK numa location diferente da do próprio repositório.
-- CMEK também exige que a service account de serviço do Artifact Registry do projeto (`service-<PROJECT_NUMBER>@gcp-sa-artifactregistry.iam.gserviceaccount.com`) já tenha o papel `roles/cloudkms.cryptoKeyEncrypterDecrypter` na chave — o módulo não concede essa permissão, precisa ser feito fora dele (ex.: `google_kms_crypto_key_iam_member`).
+- **CMEK é totalmente opcional e não altera nada quando não é usado**: se nenhum repositório do mapa informar `kms_project_id`/`kms_key_ring`/`kms_crypto_key`, o módulo não cria nenhum recurso de IAM/service identity e os repositórios continuam exatamente como estavam (sem diff no `plan`). Todo o IAM abaixo só é criado para os repositórios que informarem CMEK.
+- **Permissão na chave (criada pelo módulo quando há CMEK)**: para cada projeto com repositório CMEK, o módulo cria o service agent do Artifact Registry (`google_project_service_identity`, `service-<PROJECT_NUMBER>@gcp-sa-artifactregistry.iam.gserviceaccount.com` — só existe depois de provisionado, por isso é criado explicitamente) e concede a ele `roles/cloudkms.cryptoKeyEncrypterDecrypter` na chave (`google_kms_crypto_key_iam_member`, em `iam.tf`). O repositório tem `depends_on` nesse binding para não ser criado antes da permissão. Repositórios do mesmo projeto que usam a mesma chave compartilham um único binding.
+- `google_project_service_identity` só existe no provider `google-beta` — a stack precisa ter o provider `google-beta` configurado (mesmo requisito do módulo `workbench`).
+- Quem roda o `apply` precisa poder conceder IAM na chave KMS (ex.: `roles/cloudkms.admin` ou equivalente no projeto/keyring da chave) — o módulo não concede isso a quem executa o Terraform. A permissão pode levar alguns segundos para propagar; se o primeiro `apply` falhar com erro de acesso à chave logo após criar o binding, rode de novo.
