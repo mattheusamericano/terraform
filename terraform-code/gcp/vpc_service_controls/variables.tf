@@ -1,19 +1,9 @@
-variable "access_policy_id" {
-  description = "ID numérico da Access Policy do GCP onde o Service Perimeter alvo das regras vive (ex.: \"412713748361\")."
-  type        = string
-  default     = "412713748361"
-}
-
-variable "perimeter_name" {
-  description = "Nome do Service Perimeter já existente ao qual as regras de ingress/egress serão anexadas (ex.: \"perimetroprojetoscaixa\"). Este módulo NÃO cria nem gerencia a definição do perímetro em si (recursos, restricted services, access levels) — só anexa regras de ingress/egress a um perímetro que já existe."
-  type        = string
-  default     = "perimetroprojetoscaixa"
-}
-
 variable "ingress_policies" {
-  description = "Mapa de regras de ingress (tráfego ENTRANDO no perímetro) a criar. A chave do mapa vira o title da regra quando title não é informado. Ver README para a semântica completa de identity_type/sources/operations."
+  description = "Mapa de regras de ingress (tráfego ENTRANDO no perímetro) a criar. A chave do mapa vira o title da regra quando title não é informado. access_policy_id/perimeter_name identificam o perímetro alvo de CADA regra (com default, mas sempre presentes no objeto). Ver README para a semântica completa de identity_type/sources/operations."
   type = map(object({
-    title = optional(string)
+    title            = optional(string)
+    access_policy_id = optional(string, "412713748361")
+    perimeter_name   = optional(string, "perimetroprojetoscaixa")
 
     ingress_from = object({
       identity_type = optional(string, "ANY_IDENTITY")
@@ -55,9 +45,11 @@ variable "ingress_policies" {
 }
 
 variable "egress_policies" {
-  description = "Mapa de regras de egress (tráfego SAINDO do perímetro) a criar. A chave do mapa vira o title da regra quando title não é informado. Ver README para a semântica completa de identity_type/sources/operations."
+  description = "Mapa de regras de egress (tráfego SAINDO do perímetro) a criar. A chave do mapa vira o title da regra quando title não é informado. access_policy_id/perimeter_name identificam o perímetro alvo de CADA regra (com default, mas sempre presentes no objeto). Ver README para a semântica completa de identity_type/sources/operations."
   type = map(object({
-    title = optional(string)
+    title            = optional(string)
+    access_policy_id = optional(string, "412713748361")
+    perimeter_name   = optional(string, "perimetroprojetoscaixa")
 
     egress_from = object({
       identity_type      = optional(string, "ANY_IDENTITY")

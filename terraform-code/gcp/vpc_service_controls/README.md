@@ -2,13 +2,17 @@
 
 Módulo Terraform responsável por criar **regras de ingress e egress** (`google_access_context_manager_service_perimeter_ingress_policy` / `..._egress_policy`) num **Service Perimeter do VPC Service Controls já existente**, a partir de dois mapas de configuração independentes. Segue o mesmo padrão `for_each` sobre mapa dos demais módulos deste repositório (ex.: `service_account`, `pubsub`).
 
-Este módulo **não cria nem gerencia o perímetro em si** — nem a lista de projetos/recursos protegidos, nem os `restricted_services`, nem os access levels. Isso já é feito fora do Terraform hoje (ver `gcp-landing-zone.yaml`, step "Adicionar ao Perímetro de Acesso", via `gcloud access-context-manager perimeters update --add-resources`). Este módulo só anexa **regras de ingress/egress** a um perímetro que já existe, referenciado por `access_policy_id` + `perimeter_name`.
+Este módulo **não cria nem gerencia o perímetro em si** — nem a lista de projetos/recursos protegidos, nem os `restricted_services`, nem os access levels. Isso já é feito fora do Terraform hoje (ver `gcp-landing-zone.yaml`, step "Adicionar ao Perímetro de Acesso", via `gcloud access-context-manager perimeters update --add-resources`). Este módulo só anexa **regras de ingress/egress** a um perímetro que já existe, referenciado por `access_policy_id` + `perimeter_name` — **dentro de cada regra**, não como configuração única do módulo (ver "Por que `access_policy_id`/`perimeter_name` ficam dentro de cada regra" abaixo).
 
 ## Por que regras dedicadas (`_ingress_policy`/`_egress_policy`) e não o perímetro inteiro
 
 A API do GCP para VPC Service Controls também permite configurar ingress/egress como blocos dentro do recurso `google_access_context_manager_service_perimeter` (a definição completa do perímetro). Esse caminho foi propositalmente evitado aqui: esse recurso é **autoritativo sobre a definição inteira** do perímetro — cada `apply` reescreve toda a lista de recursos, access levels e regras de uma vez. Como o perímetro deste ambiente (`perimetroprojetoscaixa`) é compartilhado entre times/processos diferentes (o próprio `gcp-landing-zone.yaml` já mexe na lista de recursos dele via `gcloud`), usar o recurso autoritativo aqui geraria disputa de state/drift a cada `apply`.
 
 `google_access_context_manager_service_perimeter_ingress_policy`/`_egress_policy` resolvem isso: cada regra é um **objeto independente** na API do Access Context Manager, criado/atualizado/removido sem tocar nas demais regras nem na definição do perímetro. Múltiplos times podem gerenciar regras no mesmo perímetro, cada um com seu próprio `state`, sem conflito.
+
+## Por que `access_policy_id`/`perimeter_name` ficam dentro de cada regra
+
+Esses dois campos existem em **cada item** de `ingress_policies`/`egress_policies` (com default para `"412713748361"`/`"perimetroprojetoscaixa"`, o perímetro único usado hoje), em vez de serem uma única variável do módulo. Decisão deliberada: quem escreve uma regra precisa declarar explicitamente qual política/perímetro ela afeta, mesmo quando é o default — evita ficar "solto" fora da regra, onde seria fácil perder de vista qual perímetro está sendo alterado ao ler só o `ingress_policies`/`egress_policies`. Também deixa o módulo pronto para gerenciar regras em mais de um perímetro numa mesma chamada, se um dia isso for necessário, sem precisar de uma segunda instância do módulo.
 
 ## Recursos criados
 
@@ -21,11 +25,11 @@ A API do GCP para VPC Service Controls também permite configurar ingress/egress
 module "vpc_service_controls" {
   source = "./gcp/vpc_service_controls"
 
-  access_policy_id = "412713748361"
-  perimeter_name   = "perimetroprojetoscaixa"
-
   egress_policies = {
     acesso-cmek-hsm-prd = {
+      access_policy_id = "412713748361"
+      perimeter_name   = "perimetroprojetoscaixa"
+
       egress_from = {
         identity_type = "ANY_SERVICE_ACCOUNT"
       }
@@ -45,6 +49,8 @@ module "vpc_service_controls" {
 
   ingress_policies = {
     cicd-acessa-bigquery = {
+      # access_policy_id/perimeter_name omitidos de propósito -- caem no default
+      # (o mesmo perímetro "412713748361"/"perimetroprojetoscaixa" do egress acima)
       ingress_from = {
         identity_type = "ANY_SERVICE_ACCOUNT"
         identities    = ["serviceAccount:sa-cicd@prj-cicd-prd.iam.gserviceaccount.com"]
@@ -72,8 +78,6 @@ module "vpc_service_controls" {
 
 | Nome | Descrição | Tipo | Default | Obrigatório |
 |------|-----------|------|---------|:-----------:|
-| `access_policy_id` | ID numérico da Access Policy onde o perímetro vive | `string` | `"412713748361"` | não |
-| `perimeter_name` | Nome do Service Perimeter já existente ao qual as regras serão anexadas | `string` | `"perimetroprojetoscaixa"` | não |
 | `ingress_policies` | Mapa de regras de ingress a criar | `map(object({...}))` | `{}` | não |
 | `egress_policies` | Mapa de regras de egress a criar | `map(object({...}))` | `{}` | não |
 
@@ -82,6 +86,8 @@ module "vpc_service_controls" {
 | Atributo | Tipo | Default | Descrição |
 |----------|------|---------|-----------|
 | `title` | `string` | chave do mapa | Título da regra no console/API |
+| `access_policy_id` | `string` | `"412713748361"` | ID numérico da Access Policy onde o perímetro desta regra vive |
+| `perimeter_name` | `string` | `"perimetroprojetoscaixa"` | Nome do Service Perimeter já existente ao qual esta regra será anexada |
 | `ingress_from.identity_type` | `string` | `"ANY_IDENTITY"` | `ANY_IDENTITY`, `ANY_USER_ACCOUNT` ou `ANY_SERVICE_ACCOUNT` — quem pode entrar. Use `ANY_IDENTITY` só junto com `identities` vazio quando realmente quiser liberar geral; o normal é `ANY_SERVICE_ACCOUNT`/`ANY_USER_ACCOUNT` + `identities` preenchido |
 | `ingress_from.identities` | `list(string)` | `[]` | Identidades específicas liberadas (`"serviceAccount:..."`, `"user:..."`), no formato completo do GCP |
 | `ingress_from.sources` | `list(object({ access_level, resource }))` | `[]` | De onde o tráfego pode vir. Cada item tem **access_level OU resource**, nunca os dois (validado pelo módulo). `resource` é `"projects/<PROJECT_NUMBER>"` — **número do projeto, não o `project_id`** |
@@ -94,6 +100,8 @@ module "vpc_service_controls" {
 | Atributo | Tipo | Default | Descrição |
 |----------|------|---------|-----------|
 | `title` | `string` | chave do mapa | Título da regra no console/API |
+| `access_policy_id` | `string` | `"412713748361"` | ID numérico da Access Policy onde o perímetro desta regra vive |
+| `perimeter_name` | `string` | `"perimetroprojetoscaixa"` | Nome do Service Perimeter já existente ao qual esta regra será anexada |
 | `egress_from.identity_type` | `string` | `"ANY_IDENTITY"` | Mesma semântica do ingress |
 | `egress_from.identities` | `list(string)` | `[]` | Mesma semântica do ingress |
 | `egress_from.source_restriction` | `string` | `null` | `SOURCE_RESTRICTION_ENABLED` ou `SOURCE_RESTRICTION_DISABLED` — restringe a regra a `sources` específicos quando habilitado |
@@ -107,9 +115,10 @@ module "vpc_service_controls" {
 
 | Nome | Descrição |
 |------|-----------|
-| `perimeter` | Resource name completo do perímetro alvo (`accessPolicies/<access_policy_id>/servicePerimeters/<perimeter_name>`) |
 | `ingress_policy_ids` | ID de cada regra de ingress criada, indexado pela mesma chave de `ingress_policies` |
+| `ingress_policy_perimeters` | Resource name completo do perímetro alvo de cada regra de ingress (`accessPolicies/<access_policy_id>/servicePerimeters/<perimeter_name>`), indexado pela mesma chave de `ingress_policies` |
 | `egress_policy_ids` | ID de cada regra de egress criada, indexado pela mesma chave de `egress_policies` |
+| `egress_policy_perimeters` | Resource name completo do perímetro alvo de cada regra de egress, indexado pela mesma chave de `egress_policies` |
 
 ## Observações
 

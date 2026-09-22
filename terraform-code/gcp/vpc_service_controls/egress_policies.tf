@@ -1,7 +1,7 @@
 resource "google_access_context_manager_service_perimeter_egress_policy" "rule" {
   for_each = var.egress_policies
 
-  perimeter = local.perimeter
+  perimeter = local.egress_perimeters[each.key]
   title     = coalesce(each.value.title, each.key)
 
   egress_from {
