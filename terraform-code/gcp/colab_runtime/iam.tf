@@ -5,7 +5,7 @@ resource "google_compute_subnetwork_iam_member" "vertex-service-agent-role-netwo
   role       = "roles/compute.networkUser"
   region     = each.value["region"]
   subnetwork = "projects/${each.value.network_project_id}/regions/${each.value.region}/subnetworks/${each.value.name_subnet_vpc_shared}"
-  member     = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
+  member     = "serviceAccount:service-${data.google_project.project[each.value.project_id].number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
 }
 
 resource "google_compute_subnetwork_iam_member" "vertex-service-agent-network-viewer" {
@@ -15,7 +15,7 @@ resource "google_compute_subnetwork_iam_member" "vertex-service-agent-network-vi
   role       = "roles/compute.networkViewer"
   region     = each.value["region"]
   subnetwork = "projects/${each.value.network_project_id}/regions/${each.value.region}/subnetworks/${each.value.name_subnet_vpc_shared}"
-  member     = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
+  member     = "serviceAccount:service-${data.google_project.project[each.value.project_id].number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
 }
 
 resource "google_compute_subnetwork_iam_member" "vertex-nb-service-role-network-user" {
@@ -25,16 +25,8 @@ resource "google_compute_subnetwork_iam_member" "vertex-nb-service-role-network-
   role       = "roles/compute.networkUser"
   region     = each.value["region"]
   subnetwork = "projects/${each.value.network_project_id}/regions/${each.value.region}/subnetworks/${each.value.name_subnet_vpc_shared}"
-  member     = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-vertex-nb.iam.gserviceaccount.com"
+  member     = "serviceAccount:service-${data.google_project.project[each.value.project_id].number}@gcp-sa-vertex-nb.iam.gserviceaccount.com"
 }
-
-#resource "google_project_iam_member" "aiplatform_user" {
-# for_each = var.colab_runtime_template_settings
-
-# project                 = google_colab_runtime_template.runtime-template[each.key].project
-# role                    = "roles/aiplatform.colabEnterpriseUser"
-# member                 = "user:${each.value["runtime_user"]}"
-#}
 
 resource "google_project_service_identity" "colab_runtime_template_aiplatform" {
   for_each = local.colab_runtime_template_cmek_projects

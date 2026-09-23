@@ -12,12 +12,9 @@ variable "colab_runtime_template_settings" {
     name_vpc_shared        = string
     name_subnet_vpc_shared = string
     labels                 = map(any)
-    runtime_user           = optional(string)
-    runtime_name           = optional(string)
-
-    kms_project_id = optional(string)
-    kms_key_ring   = optional(string)
-    kms_crypto_key = optional(string)
+    kms_project_id         = optional(string)
+    kms_key_ring           = optional(string)
+    kms_crypto_key         = optional(string)
 
   }))
 
