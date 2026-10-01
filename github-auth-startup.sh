@@ -1,14 +1,26 @@
 #!/bin/bash
 set -euo pipefail
 
-# Post-startup script roda como ROOT. Nada de ~ ou --global aqui.
 LOG=/var/log/github-app-setup.log
 exec > >(tee -a "$LOG") 2>&1
 echo "[INFO] $(date -Is) iniciando setup"
 
-# Interpretador do ambiente do Workbench, nao o python3 do root
-PY=/opt/conda/bin/python3
-[[ -x "$PY" ]] || PY=/usr/bin/python3
+PY=""
+for cand in /opt/micromamba/bin/python3 \
+            /opt/conda/bin/python3 \
+            /opt/conda/bin/python; do
+  if [[ -x "$cand" ]]; then PY="$cand"; break; fi
+done
+
+if [[ -z "$PY" ]]; then
+  PY="$(sudo -u jupyter bash -lc 'command -v python3' 2>/dev/null || true)"
+fi
+
+if [[ -z "$PY" || "$PY" == "/usr/bin/python3" ]]; then
+  echo "[ERRO] interpretador do JupyterLab nao encontrado; abortando."
+  exit 1
+fi
+echo "[INFO] interpretador: $PY"
 
 echo "[INFO] Instalando dependencias Python..."
 "$PY" -m pip install --upgrade PyJWT cryptography google-cloud-secret-manager
@@ -25,16 +37,12 @@ import os
 import sys
 import time
 import json
-import stat
 import urllib.request
 
 from google.cloud import secretmanager
 from google.api_core.client_options import ClientOptions
-import jwt  # PyJWT
+import jwt
 
-# ==================================================
-# CONFIGURACOES
-# ==================================================
 APP_ID = "5139084"
 INSTALLATION_ID = "166606234"
 PROJECT_ID = "prj-risco-credito-mod-prd"
@@ -42,12 +50,10 @@ SECRET_NAME = "githubapp-workbench-auth"
 LOCATION = "southamerica-east1"
 
 CACHE_PATH = "/dev/shm/.gh-app-token"
-CACHE_TTL = 3000  # 50 min; o token do GitHub vale 60
-# ==================================================
+CACHE_TTL = 3000
 
 
 def get_secret():
-    """Recupera a chave privada da GitHub App no Secret Manager regional."""
     endpoint = f"secretmanager.{LOCATION}.rep.googleapis.com"
     client = secretmanager.SecretManagerServiceClient(
         client_options=ClientOptions(api_endpoint=endpoint)
@@ -63,13 +69,12 @@ def get_secret():
 
 
 def mint_token():
-    """Gera o JWT da App e troca por um Installation Access Token."""
     private_key = get_secret()
 
     now = int(time.time())
     payload = {
         "iat": now - 60,
-        "exp": now + 540,   # span total 600s: limite maximo do GitHub
+        "exp": now + 540,
         "iss": APP_ID,
     }
     jwt_token = jwt.encode(payload, private_key, algorithm="RS256")
@@ -87,10 +92,8 @@ def mint_token():
 
 
 def get_token():
-    """Token cacheado em tmpfs; evita 3 round-trips a cada operacao Git."""
     try:
-        age = time.time() - os.stat(CACHE_PATH).st_mtime
-        if age < CACHE_TTL:
+        if time.time() - os.stat(CACHE_PATH).st_mtime < CACHE_TTL:
             with open(CACHE_PATH) as fh:
                 cached = fh.read().strip()
             if cached:
@@ -104,7 +107,7 @@ def get_token():
         with os.fdopen(fd, "w") as fh:
             fh.write(token)
     except OSError:
-        pass  # cache e otimizacao, nao requisito
+        pass
     return token
 
 
@@ -113,16 +116,21 @@ if len(sys.argv) > 1 and sys.argv[1] == "get":
         print("username=x-access-token")
         print(f"password={get_token()}")
     except Exception as exc:
-        # Sem isso o Git cai no prompt interativo e o erro real some
         print(f"git-credential-gh-app: {exc}", file=sys.stderr)
         sys.exit(1)
 EOF
 
 chmod 0755 "$HELPER"
 
+if ! "$PY" -c "import jwt, google.cloud.secretmanager" 2>/dev/null; then
+  echo "[ERRO] dependencias nao importam em $PY"
+  exit 1
+fi
+
 echo "[INFO] Configurando Git Credential Helper (system-wide)..."
 git config --system credential."https://github.com".helper "$HELPER"
 git config --system credential."https://github.com".useHttpPath false
 git config --system url."https://github.com/".insteadOf "git@github.com:"
+git config --system url."https://github.com/".insteadOf "ssh://git@github.com/"
 
 echo "[INFO] $(date -Is) Startup Script concluido com sucesso."
