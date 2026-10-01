@@ -99,6 +99,7 @@ stages:
           sigla: $(sigla)
           state_bucket: $(state-bucket)
           region: $(region)
+          environment: $(environment)
       - template: terraform/terraform_version.yaml@ado-pipelines-templates
       - template: terraform/terraform_plan.yaml@ado-pipelines-templates
         parameters:
