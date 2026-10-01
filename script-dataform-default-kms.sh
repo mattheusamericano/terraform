@@ -1,11 +1,24 @@
-gcloud kms keys add-iam-policy-binding KMS_KEY \
-  --keyring=KMS_KEY_RING --location=LOCATION \
-  --member="serviceAccount:service-PROJECT_NUMBER@gcp-sa-dataform.iam.gserviceaccount.com" \
-  --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
+gcloud kms keys add-iam-policy-binding dtfrmNPRDSYMAES256hsm001 \
+  --keyring=dtfrmhsmNPRDring --location=southamerica-east1 \
+  --member="serviceAccount:service-394791638914@gcp-sa-dataform.iam.gserviceaccount.com" \
+  --role="roles/cloudkms.cryptoKeyEncrypterDecrypter" \
+  --project="prj-hsm-services-des"
 
 
 curl -X PATCH \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
-  -d '{"defaultKmsKeyName":"projects/PROJECT_ID/locations/LOCATION/keyRings/KMS_KEY_RING/cryptoKeys/KMS_KEY"}' \
-  https://dataform.googleapis.com/v1/projects/PROJECT_ID/locations/LOCATION/config
+  -d '{"defaultKmsKeyName":"projects/prj-hsm-services-des/locations/southamerica-east1/keyRings/dtfrmhsmNPRDring/cryptoKeys/dtfrmNPRDSYMAES256hsm001"}' \
+  https://dataform.googleapis.com/v1/projects/prj-decci-des/locations/southamerica-east1/config
+
+  curl -X PATCH \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{"defaultKmsKeyName":"projects/prj-hsm-services-prd/locations/southamerica-east1/keyRings/dataformrepositoryhsmPRDring/cryptoKeys/dtformPRDSYMAES256hsm001"}' \
+  https://dataform.googleapis.com/v1/projects/prj-siapc-prd/locations/southamerica-east1/config
+
+  gcloud kms keys add-iam-policy-binding dtformPRDSYMAES256hsm001 \
+  --keyring=dataformrepositoryhsmPRDring --location=southamerica-east1 \
+  --member="serviceAccount:service-1058859310639@gcp-sa-dataform.iam.gserviceaccount.com" \
+  --role="roles/cloudkms.cryptoKeyEncrypterDecrypter" \
+  --project="prj-hsm-services-prd"
