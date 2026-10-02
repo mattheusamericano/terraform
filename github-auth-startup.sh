@@ -40,20 +40,30 @@ import json
 import urllib.request
 
 from google.cloud import secretmanager
+from google.api_core.client_options import ClientOptions
 import jwt
 
 APP_ID = "5139084"
 INSTALLATION_ID = "166606234"
 PROJECT_ID = "prj-risco-credito-mod-prd"
 SECRET_NAME = "githubapp-workbench-auth"
+LOCATION = "southamerica-east1"
 
 CACHE_PATH = "/dev/shm/.gh-app-token"
 CACHE_TTL = 3000
 
 
 def get_secret():
-    client = secretmanager.SecretManagerServiceClient()
-    secret_path = f"projects/{PROJECT_ID}/secrets/{SECRET_NAME}/versions/latest"
+    endpoint = f"secretmanager.{LOCATION}.rep.googleapis.com"
+    client = secretmanager.SecretManagerServiceClient(
+        client_options=ClientOptions(api_endpoint=endpoint)
+    )
+    secret_path = (
+        f"projects/{PROJECT_ID}"
+        f"/locations/{LOCATION}"
+        f"/secrets/{SECRET_NAME}"
+        f"/versions/latest"
+    )
     response = client.access_secret_version(request={"name": secret_path})
     return response.payload.data.decode("UTF-8")
 
