@@ -20,9 +20,9 @@ steps:
       BUCKET="gs://${{ parameters.state_bucket }}"
 
       if [ "${{ parameters.environment }}" = "prd" ]; then
-        KMS_KEY="projects/prj-hsm-services-prd/locations/${{ parameters.region }}/keyRings/infrahsmPRDring/cryptoKeys/infraPRDSYMAES256hsm001"
+        KMS_KEY="projects/prj-hsm-services-prd/locations/${{ parameters.region }}/keyRings/BuckethsmPRDring/cryptoKeys/BucketPRDSYMAES256hsm001"
       else
-        KMS_KEY="projects/prj-hsm-services-des/locations/${{ parameters.region }}/keyRings/infrahsmNPRDring/cryptoKeys/infraNPRDSYMAES256hsm001"
+        KMS_KEY="projects/prj-hsm-services-des/locations/${{ parameters.region }}/keyRings/buckethsmNPRDring/cryptoKeys/bucketNPRDSYMAES256hsm001"
       fi
 
       gcloud storage service-agent \
